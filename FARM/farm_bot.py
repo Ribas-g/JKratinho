@@ -179,8 +179,17 @@ class ArcherFarmBot:
         """Captura screenshot"""
         try:
             screenshot_bytes = self.device.shell("screencap -p", encoding=None)
+            if not screenshot_bytes or len(screenshot_bytes) < 100:
+                print(f"⚠️ Screenshot vazio ou muito pequeno")
+                return None
+
             nparr = np.frombuffer(screenshot_bytes, np.uint8)
             img_bgr = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+            if img_bgr is None or img_bgr.size == 0:
+                print(f"⚠️ Falha ao decodificar screenshot")
+                return None
+
             # IMPORTANTE: YOLO espera BGR, não converter!
             return img_bgr
         except Exception as e:
@@ -190,6 +199,9 @@ class ArcherFarmBot:
     def detectar_objetos(self, img):
         """Detecta objetos na imagem"""
         try:
+            if img is None or img.size == 0:
+                return []
+
             # Threshold mais baixo para detectar mais (ajustável)
             results = self.model(img, conf=0.25, verbose=False)
 
@@ -210,7 +222,7 @@ class ArcherFarmBot:
 
             return deteccoes
         except Exception as e:
-            print(f"❌ Erro: {e}")
+            print(f"❌ Erro na detecção: {e}")
             return []
 
     def detectar_cerco(self, deteccoes):

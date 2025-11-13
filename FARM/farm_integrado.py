@@ -308,26 +308,34 @@ class FarmIntegrado:
 
         frame_count = 0
         last_mob_check = time.time()
+        last_heartbeat = time.time()
         check_interval = 5.0  # Verificar área a cada 5 segundos
+        heartbeat_interval = 30.0  # Log de status a cada 30 segundos
+        failed_captures = 0
+        max_failed_captures = 10  # Parar após 10 falhas consecutivas
 
         while self.running:
             try:
-                # DESABILITADO: Verificação de área com GPS (abre mapa desnecessariamente)
-                # Se necessário no futuro, implementar com sistema de tracking alternativo
-                # if frame_count % 30 == 0:
-                #     na_area, dist, radius = self.esta_na_area_farm()
-                #     if not na_area:
-                #         print(f"\n⚠️ Fora da área de farm! (dist={dist:.1f}, max={radius})")
-                #         print("🔄 Retornando para área de farm...")
-                #         if not self.navegar_para_zona():
-                #             print("❌ Falha ao retornar! Parando farm...")
-                #             break
+                # Heartbeat: Log periódico de status
+                current_time = time.time()
+                if (current_time - last_heartbeat) >= heartbeat_interval:
+                    print(f"\n💚 [Heartbeat] Frame {frame_count}, Bot ativo: {self.farm_bot.bot_active}")
+                    last_heartbeat = current_time
 
                 # Processar frame de farm
-                self.farm_bot.processar_frame()
+                try:
+                    self.farm_bot.processar_frame()
+                    failed_captures = 0  # Reset contador de falhas
+                except Exception as e:
+                    failed_captures += 1
+                    print(f"⚠️ Erro ao processar frame ({failed_captures}/{max_failed_captures}): {e}")
+                    if failed_captures >= max_failed_captures:
+                        print(f"\n❌ Muitas falhas consecutivas! Parando farm...")
+                        break
+                    time.sleep(0.5)  # Esperar antes de tentar novamente
+                    continue
 
                 # Procurar mobs ativamente se não houver alvo
-                current_time = time.time()
                 if (current_time - last_mob_check) >= check_interval:
                     if self.farm_bot.current_target is None:
                         self.procurar_mobs_ativamente()
@@ -335,7 +343,8 @@ class FarmIntegrado:
 
                 frame_count += 1
 
-                # TODO: Adicionar verificação de teclas (P para pausar, Q para sair)
+                # DELAY ENTRE FRAMES: Evitar sobrecarga de CPU e flood de comandos
+                time.sleep(0.15)  # 150ms entre frames (~6-7 FPS)
 
             except KeyboardInterrupt:
                 print("\n\n⏹️ Farm interrompido pelo usuário!")
@@ -348,6 +357,7 @@ class FarmIntegrado:
 
         self.farm_bot.bot_active = False
         print("\n✅ Farm finalizado!")
+        print(f"📊 Total de frames processados: {frame_count}")
 
     def menu_principal(self):
         """Menu principal do sistema integrado"""
