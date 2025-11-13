@@ -648,6 +648,10 @@ class ArcherFarmBot:
 
     def atualizar_display(self, img, deteccoes):
         """Atualiza visualização"""
+        # Se não tem interface gráfica (modo headless), não faz nada
+        if self.root is None:
+            return
+
         # Converter BGR para RGB para PIL
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         img_pil = Image.fromarray(img_rgb)
