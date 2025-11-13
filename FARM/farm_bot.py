@@ -375,6 +375,28 @@ class ArcherFarmBot:
     def executar_tap(self, x, y, description=""):
         """Executa tap no emulador"""
         try:
+            # ZONA MORTA: Não clicar muito perto do personagem (centro da tela)
+            # para evitar abrir menu do personagem
+            dx = x - self.config.center_x
+            dy = y - self.config.center_y
+            dist_from_center = math.sqrt(dx**2 + dy**2)
+
+            # Raio da zona morta: ~80 pixels (personagem + margem de segurança)
+            DEAD_ZONE_RADIUS = 80
+
+            if dist_from_center < DEAD_ZONE_RADIUS:
+                # Ajustar clique para borda da zona morta
+                if dist_from_center > 0:
+                    # Normalizar e multiplicar pelo raio da zona morta
+                    scale = DEAD_ZONE_RADIUS / dist_from_center
+                    x = self.config.center_x + int(dx * scale)
+                    y = self.config.center_y + int(dy * scale)
+                    print(f"   ⚠️ Clique ajustado para fora da zona morta")
+                else:
+                    # Exatamente no centro, não clicar
+                    print(f"   ⚠️ Clique cancelado: muito perto do personagem!")
+                    return False
+
             # Converter coordenadas se necessário (screen vs touch)
             self.device.shell(f"input tap {x} {y}")
             if description:
