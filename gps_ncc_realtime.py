@@ -392,7 +392,7 @@ class GPSRealtimeNCC:
         if verbose:
             print("\n1️⃣ Abrindo mapa in-game...")
         self.click_button('open')
-        time.sleep(0.5)  # Aguardar animação
+        time.sleep(0.3)  # Aguardar animação (otimizado)
 
         # 2. Capturar screenshot
         if verbose:
@@ -442,7 +442,7 @@ class GPSRealtimeNCC:
             if verbose:
                 print("8️⃣ Fechando mapa...")
             self.click_button('close')
-            time.sleep(0.3)
+            time.sleep(0.2)  # Otimizado para velocidade
 
         # Resultado
         resultado = {

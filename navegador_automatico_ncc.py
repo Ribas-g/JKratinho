@@ -82,7 +82,7 @@ class NavegadorAutomaticoNCC:
 
         print(f"   📏 Distância de clique: {self.click_distance} pixels (no mapa mundo)")
 
-        self.wait_after_click = 1.0  # Tempo de espera após clique
+        self.wait_after_click = 0.2  # Tempo de espera após clique (reduzido para velocidade)
         self.max_steps = 100  # Máximo de passos para evitar loop infinito
         self.tolerance_pixels = 30  # Tolerância para considerar "chegou" (em pixels)
         
@@ -360,14 +360,14 @@ class NavegadorAutomaticoNCC:
             True se player chegou, False se timeout
         """
         start_time = time.time()
-        check_interval = 0.3
+        check_interval = 0.15  # Reduzido para checks mais rápidos
         last_print_time = 0
 
         print(f"      ⏳ Aguardando movimento (de {x_antes},{y_antes} para {destino_x},{destino_y})...")
 
         # FASE 1: Aguardar linha verde APARECER (player começou a andar)
         movimento_detectado = False
-        fase1_timeout = 1.5  # Timeout reduzido
+        fase1_timeout = 1.0  # Timeout otimizado para velocidade
 
         while (time.time() - start_time) < fase1_timeout:
             has_green = self.detectar_linha_verde()
