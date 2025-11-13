@@ -1036,9 +1036,11 @@ class NavegadorAutomaticoNCC:
             captura_height = map_region['height'] # 899 pixels (TELA ORIGINAL)
             
             # Raio visível (metade da captura) - em pixels do mapa mundo
-            # Como escala é 1:1, raio visível = metade da captura
-            raio_visivel_x = captura_width // 2   # 800 pixels do mapa mundo
-            raio_visivel_y = captura_height // 2  # 450 pixels do mapa mundo (aproximadamente 449)
+            # CORREÇÃO: Com escala 5.0, precisamos dividir pelo fator de escala!
+            # Tela captura 1600px, mas com escala 5.0 isso representa 1600/5 = 320px no mundo
+            # Raio = (tamanho_tela / 2) / escala = área visível no mapa mundo
+            raio_visivel_x = int((captura_width / 2) / self.escala_x)   # (1600 / 2) / 5.0 = 160 pixels
+            raio_visivel_y = int((captura_height / 2) / self.escala_y)  # (899 / 2) / 5.0 = 90 pixels
             
             # Área visível do mapa mundo (em pixels do mapa mundo)
             # Área visível = player_pos ± raio_visivel
@@ -1139,12 +1141,14 @@ class NavegadorAutomaticoNCC:
                 # Raio clicável = (captura - margens) / 2
                 margem_clique_x = 120  # Margem para UI/bordas na largura
                 margem_clique_y = 100  # Margem para UI/bordas na altura
-                
-                raio_clicavel_x = (captura_width - margem_clique_x * 2) // 2   # (1600 - 240) / 2 = 680
-                raio_clicavel_y = (captura_height - margem_clique_y * 2) // 2  # (899 - 200) / 2 = 350
-                
-                # Distância máxima para clique = raio clicável (garante clique válido)
-                dist_maxima_clique = min(raio_clicavel_x, raio_clicavel_y)  # min(680, 350) = 350 pixels
+
+                # CORREÇÃO: Com escala 5.0, precisamos dividir pelo fator de escala!
+                # Área clicável na tela → convertida para pixels do mundo
+                raio_clicavel_x = int(((captura_width - margem_clique_x * 2) / 2) / self.escala_x)   # (1360 / 2) / 5.0 = 136
+                raio_clicavel_y = int(((captura_height - margem_clique_y * 2) / 2) / self.escala_y)  # (699 / 2) / 5.0 = 70
+
+                # Distância máxima para clique = raio clicável no mapa mundo
+                dist_maxima_clique = min(raio_clicavel_x, raio_clicavel_y)  # min(136, 70) = 70 pixels mundo
                 
                 # IMPORTANTE: Limitar distância máxima para garantir que o clique seja válido
                 # O clique precisa estar dentro da área visível e dentro da região do mapa
