@@ -299,15 +299,16 @@ class FarmIntegrado:
 
         while self.running:
             try:
-                # Verificar se está na área de farm (a cada 30 frames)
-                if frame_count % 30 == 0:
-                    na_area, dist, radius = self.esta_na_area_farm()
-                    if not na_area:
-                        print(f"\n⚠️ Fora da área de farm! (dist={dist:.1f}, max={radius})")
-                        print("🔄 Retornando para área de farm...")
-                        if not self.navegar_para_zona():
-                            print("❌ Falha ao retornar! Parando farm...")
-                            break
+                # DESABILITADO: Verificação de área com GPS (abre mapa desnecessariamente)
+                # Se necessário no futuro, implementar com sistema de tracking alternativo
+                # if frame_count % 30 == 0:
+                #     na_area, dist, radius = self.esta_na_area_farm()
+                #     if not na_area:
+                #         print(f"\n⚠️ Fora da área de farm! (dist={dist:.1f}, max={radius})")
+                #         print("🔄 Retornando para área de farm...")
+                #         if not self.navegar_para_zona():
+                #             print("❌ Falha ao retornar! Parando farm...")
+                #             break
 
                 # Processar frame de farm
                 self.farm_bot.processar_frame()
