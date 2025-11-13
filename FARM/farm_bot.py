@@ -101,6 +101,7 @@ class ArcherFarmBot:
         self.kite_state = "ATTACK"  # Alterna entre ATTACK e MOVE
         self.kite_angle = 0  # Ângulo para movimento circular
         self.last_kite_move = 0
+        self.combat_style = "ranged"  # "ranged" (arqueiro/mago) ou "melee" (guerreiro)
 
         # Estatísticas
         self.frame_count = 0
@@ -267,8 +268,15 @@ class ArcherFarmBot:
 
         return None
 
-    def calcular_ponto_kite(self, mob_bbox, kite_type="strafe"):
-        """Calcula ponto para kiting (movimento evasivo mantendo distância)"""
+    def calcular_ponto_kite(self, mob_bbox, kite_type="strafe", combat_style="ranged"):
+        """
+        Calcula ponto para kiting (movimento evasivo mantendo distância)
+
+        Args:
+            mob_bbox: Bounding box do mob
+            kite_type: "strafe" (lateral), "back" (recuar), "circle" (circular melee)
+            combat_style: "ranged" (arqueiro/mago) ou "melee" (guerreiro)
+        """
         x1, y1, x2, y2 = mob_bbox
         mob_center_x = (x1 + x2) // 2
         mob_center_y = (y1 + y2) // 2
@@ -286,17 +294,48 @@ class ArcherFarmBot:
         dx_norm = dx / dist
         dy_norm = dy / dist
 
-        if kite_type == "back":
-            # Recuar direto (para emergências - mob muito perto)
-            kite_distance = self.config.tile_size * 2.5
-            kite_x = self.config.center_x + int(dx_norm * kite_distance)
-            kite_y = self.config.center_y + int(dy_norm * kite_distance)
+        if combat_style == "melee":
+            # GUERREIRO (MELEE): Movimento circular curto ao redor do mob
+            # Mantém distância de ~1 tile para poder atacar
 
-        else:  # strafe (movimento lateral/circular)
-            # Distância ideal: 2.5 tiles (sweet spot para arqueiro)
-            ideal_distance = self.config.tile_size * 2.5
+            if kite_type == "back":
+                # Emergência: recuar um pouco
+                kite_distance = self.config.tile_size * 1.5
+                kite_x = self.config.center_x + int(dx_norm * kite_distance)
+                kite_y = self.config.center_y + int(dy_norm * kite_distance)
+            else:
+                # Movimento circular: orbitar ao redor do mob
+                # Distância fixa de 1 tile (alcance melee)
+                ideal_distance = self.config.tile_size * 1.0
 
-            # Se muito perto, aumentar distância
+                # Incrementar ângulo para movimento circular
+                self.kite_angle += 45  # 45 graus por movimento
+                if self.kite_angle >= 360:
+                    self.kite_angle = 0
+
+                # Converter ângulo para radianos
+                angle_rad = math.radians(self.kite_angle)
+
+                # Calcular posição circular ao redor do mob
+                offset_x = int(ideal_distance * math.cos(angle_rad))
+                offset_y = int(ideal_distance * math.sin(angle_rad))
+
+                kite_x = mob_center_x + offset_x
+                kite_y = mob_center_y + offset_y
+
+        else:
+            # RANGED (ARQUEIRO/MAGO): Movimento original
+            if kite_type == "back":
+                # Recuar direto (para emergências - mob muito perto)
+                kite_distance = self.config.tile_size * 2.5
+                kite_x = self.config.center_x + int(dx_norm * kite_distance)
+                kite_y = self.config.center_y + int(dy_norm * kite_distance)
+
+            else:  # strafe (movimento lateral/circular)
+                # Distância ideal: 2.5 tiles (sweet spot para arqueiro)
+                ideal_distance = self.config.tile_size * 2.5
+
+                # Se muito perto, aumentar distância
             # Se muito longe, diminuir distância
             target_distance = ideal_distance
 
@@ -389,7 +428,7 @@ class ArcherFarmBot:
         if zona == "MUITO_PERTO":
             # EMERGÊNCIA: Mob MUITO perto (< 1 tile)
             # Recuar urgente!
-            kite_x, kite_y = self.calcular_ponto_kite(mob['bbox'], kite_type="back")
+            kite_x, kite_y = self.calcular_ponto_kite(mob['bbox'], kite_type="back", combat_style=self.combat_style)
             self.executar_tap(kite_x, kite_y, f"🔴 RECUAR URGENTE de {mob['class']}")
             action = "RECUAR"
             self.kite_state = "MOVE"  # Forçar movimento no próximo frame
@@ -406,7 +445,7 @@ class ArcherFarmBot:
 
             else:  # kite_state == "MOVE"
                 # MOVER: Kiting para manter distância
-                kite_x, kite_y = self.calcular_ponto_kite(mob['bbox'], kite_type="strafe")
+                kite_x, kite_y = self.calcular_ponto_kite(mob['bbox'], kite_type="strafe", combat_style=self.combat_style)
                 self.executar_tap(kite_x, kite_y, f"🏃 Kite de {mob['class']}")
                 action = "KITE"
                 self.kite_state = "ATTACK"  # Próxima ação: atacar
