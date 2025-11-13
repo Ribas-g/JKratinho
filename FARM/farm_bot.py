@@ -93,6 +93,8 @@ class ArcherFarmBot:
 
         # Alvo atual
         self.current_target = None
+        self.target_lock_time = 0  # Timestamp de quando travou no alvo
+        self.target_lock_duration = 2.0  # Manter alvo por 2 segundos antes de trocar
         self.last_action = "IDLE"
         self.last_action_time = 0
         self.action_cooldown = 0.4  # segundos entre ações
@@ -102,6 +104,10 @@ class ArcherFarmBot:
         self.kite_angle = 0  # Ângulo para movimento circular
         self.last_kite_move = 0
         self.combat_style = "ranged"  # "ranged" (arqueiro/mago) ou "melee" (guerreiro)
+
+        # Área de farm (limites para não sair do bioma)
+        self.farm_area_center = None  # (x, y) em coordenadas de tela
+        self.farm_area_radius = None  # raio em pixels
 
         # Estatísticas
         self.frame_count = 0
@@ -127,6 +133,17 @@ class ArcherFarmBot:
         # UI
         self.root = None
         self.canvas = None
+
+    def configurar_area_farm(self, center_screen_x, center_screen_y, radius_px):
+        """
+        Configura área de farm em coordenadas de tela
+        Args:
+            center_screen_x, center_screen_y: Centro em pixels da tela
+            radius_px: Raio em pixels
+        """
+        self.farm_area_center = (center_screen_x, center_screen_y)
+        self.farm_area_radius = radius_px
+        print(f"   📍 Área de farm configurada: centro=({center_screen_x}, {center_screen_y}), raio={radius_px}px")
 
     def conectar_bluestacks(self):
         """Conecta ao BlueStacks"""
@@ -196,6 +213,62 @@ class ArcherFarmBot:
             print(f"❌ Erro: {e}")
             return []
 
+    def detectar_cerco(self, deteccoes):
+        """
+        Detecta se está sendo cercado por mobs (PERIGOSO!)
+        Retorna (cercado, num_mobs_proximos, direcao_fuga)
+        """
+        mobs = [d for d in deteccoes if d['class'] in ['crab', 'rat', 'crow', 'spider', 'skeleton', 'cobra', 'worm', 'scorpion']]
+
+        # Contar mobs a 1 tile de distância
+        mobs_muito_proximos = []
+        for mob in mobs:
+            dist_px, dist_tiles = self.calcular_distancia(mob['bbox'])
+            if dist_tiles <= 1.0:
+                x1, y1, x2, y2 = mob['bbox']
+                mob_center_x = (x1 + x2) // 2
+                mob_center_y = (y1 + y2) // 2
+                mobs_muito_proximos.append({
+                    'bbox': mob['bbox'],
+                    'center': (mob_center_x, mob_center_y),
+                    'dist': dist_tiles
+                })
+
+        num_proximos = len(mobs_muito_proximos)
+
+        # 3+ mobs a 1 tile = CERCO PERIGOSO!
+        if num_proximos >= 3:
+            # Calcular direção média dos mobs (para fugir na direção oposta)
+            avg_dx = 0
+            avg_dy = 0
+            for mob in mobs_muito_proximos:
+                dx = mob['center'][0] - self.config.center_x
+                dy = mob['center'][1] - self.config.center_y
+                avg_dx += dx
+                avg_dy += dy
+
+            avg_dx /= num_proximos
+            avg_dy /= num_proximos
+
+            # Direção de fuga: oposta aos mobs
+            fuga_dx = -avg_dx
+            fuga_dy = -avg_dy
+
+            # Normalizar
+            dist = math.sqrt(fuga_dx**2 + fuga_dy**2)
+            if dist > 0:
+                fuga_dx /= dist
+                fuga_dy /= dist
+
+            # Ponto de fuga: 3 tiles na direção oposta
+            fuga_distance = self.config.tile_size * 3.0
+            fuga_x = int(self.config.center_x + fuga_dx * fuga_distance)
+            fuga_y = int(self.config.center_y + fuga_dy * fuga_distance)
+
+            return True, num_proximos, (fuga_x, fuga_y)
+
+        return False, num_proximos, None
+
     def calcular_distancia(self, bbox):
         """Calcula distância do mob ao player (centro) em pixels"""
         x1, y1, x2, y2 = bbox
@@ -227,11 +300,17 @@ class ArcherFarmBot:
             return "MUITO_LONGE"  # Ignorar
 
     def selecionar_alvo(self, deteccoes):
-        """Seleciona melhor alvo para atacar"""
+        """
+        Seleciona melhor alvo para atacar com PERSISTÊNCIA
+        Mantém alvo atual por target_lock_duration segundos antes de trocar
+        """
+        current_time = time.time()
+
         # Filtrar apenas mobs (não coins)
         mobs = [d for d in deteccoes if d['class'] in ['crab', 'rat', 'crow', 'spider', 'skeleton', 'cobra', 'worm', 'scorpion']]
 
         if not mobs:
+            self.current_target = None
             return None
 
         # Calcular distâncias
@@ -246,6 +325,23 @@ class ArcherFarmBot:
                 'dist_tiles': dist_tiles,
                 'zona': zona
             })
+
+        # PERSISTÊNCIA: Se tem alvo atual e ainda está visível, manter por um tempo
+        if self.current_target is not None:
+            time_locked = current_time - self.target_lock_time
+
+            # Se ainda não passou o tempo de lock, verificar se alvo atual ainda existe
+            if time_locked < self.target_lock_duration:
+                # Procurar alvo atual nas detecções
+                for mob_info in mobs_com_info:
+                    if mob_info['mob']['class'] == self.current_target['mob']['class']:
+                        # Verificar se é aproximadamente a mesma posição (dentro de 50px)
+                        if mob_info['dist_px'] - self.current_target['dist_px'] < 50:
+                            # Manter alvo atual
+                            return mob_info
+
+        # Trocar de alvo ou selecionar novo
+        self.target_lock_time = current_time
 
         # Prioridade: mobs na zona IDEAL, depois mais próximos
         ideal = [m for m in mobs_com_info if m['zona'] == 'IDEAL']
@@ -513,6 +609,17 @@ class ArcherFarmBot:
 
         # Bot ativo
         if self.bot_active:
+            # PRIORIDADE 1: Detectar cerco (PERIGOSO!)
+            cercado, num_mobs, ponto_fuga = self.detectar_cerco(deteccoes)
+
+            if cercado:
+                # 🚨 CERCO DETECTADO! FUGIR IMEDIATAMENTE!
+                print(f"\n🚨 CERCO DETECTADO! {num_mobs} mobs a 1 tile!")
+                print(f"   🏃 FUGINDO para ({ponto_fuga[0]}, {ponto_fuga[1]})...")
+                self.executar_tap(ponto_fuga[0], ponto_fuga[1], f"🚨 FUGA DE CERCO ({num_mobs} mobs)")
+                self.current_target = None  # Resetar alvo
+                return  # Não fazer mais nada neste frame
+
             # Selecionar alvo
             alvo_info = self.selecionar_alvo(deteccoes)
             self.current_target = alvo_info

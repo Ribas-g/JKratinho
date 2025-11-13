@@ -242,7 +242,7 @@ class FarmIntegrado:
     def procurar_mobs_ativamente(self):
         """
         Movimento ativo: Se não houver mobs visíveis, move-se pela área
-        para encontrar mais mobs
+        para encontrar mais mobs (SEM SAIR DO BIOMA)
         """
         print("   🔍 Procurando mobs na área...")
 
@@ -260,25 +260,38 @@ class FarmIntegrado:
             # Nenhum mob visível - mover para explorar área
             print("   ➡️ Nenhum mob visível, explorando área...")
 
-            # Movimento aleatório dentro da área de farm
-            zone_data = self.zones[self.selected_zone]
-            center_x = zone_data['farm_area']['center']['x']
-            center_y = zone_data['farm_area']['center']['y']
-            radius = zone_data['farm_area']['radius'] * 0.7  # 70% do raio
+            # Movimento em coordenadas de TELA (não usar GPS)
+            # Calcular ponto aleatório a 3-4 tiles de distância
+
+            import random
+
+            # Distância aleatória: 3-4 tiles
+            tile_size = self.farm_bot.config.tile_size
+            distance = random.uniform(tile_size * 3, tile_size * 4)
 
             # Ângulo aleatório
-            import random
             angle = random.uniform(0, 2 * math.pi)
 
-            # Ponto de destino
-            move_x = int(center_x + radius * math.cos(angle))
-            move_y = int(center_y + radius * math.sin(angle))
+            # Calcular ponto relativo ao personagem (centro da tela)
+            center_x = self.farm_bot.config.center_x
+            center_y = self.farm_bot.config.center_y
 
-            # Mover (usando navegador)
-            # TODO: Implementar movimento curto sem abrir mapa completo
-            print(f"   📍 Movendo para: ({move_x}, {move_y})")
+            offset_x = int(distance * math.cos(angle))
+            offset_y = int(distance * math.sin(angle))
 
-            time.sleep(2)  # Esperar um pouco
+            move_x = center_x + offset_x
+            move_y = center_y + offset_y
+
+            # Limitar à tela (não clicar fora)
+            move_x = max(100, min(self.farm_bot.config.screen_width - 100, move_x))
+            move_y = max(100, min(self.farm_bot.config.screen_height - 100, move_y))
+
+            print(f"   📍 Explorando: ({move_x}, {move_y}) - {distance/tile_size:.1f} tiles")
+
+            # Executar movimento
+            self.farm_bot.executar_tap(move_x, move_y, "🔍 Explorar área")
+
+            time.sleep(1.5)  # Esperar movimento
 
     def executar_farm_loop(self):
         """Loop principal de farm"""
