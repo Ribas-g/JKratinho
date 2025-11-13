@@ -444,35 +444,35 @@ class ArcherFarmBot:
                 ideal_distance = self.config.tile_size * 2.5
 
                 # Se muito perto, aumentar distância
-            # Se muito longe, diminuir distância
-            target_distance = ideal_distance
+                # Se muito longe, diminuir distância
+                target_distance = ideal_distance
 
-            # Calcular ângulo perpendicular para movimento lateral
-            # Incrementar ângulo para criar movimento circular
-            self.kite_angle += 45  # 45 graus por movimento
-            if self.kite_angle >= 360:
-                self.kite_angle = 0
+                # Calcular ângulo perpendicular para movimento lateral
+                # Incrementar ângulo para criar movimento circular
+                self.kite_angle += 45  # 45 graus por movimento
+                if self.kite_angle >= 360:
+                    self.kite_angle = 0
 
-            angle_rad = math.radians(self.kite_angle)
+                angle_rad = math.radians(self.kite_angle)
 
-            # Vetor perpendicular (strafe lateral)
-            perp_dx = -dy_norm
-            perp_dy = dx_norm
+                # Vetor perpendicular (strafe lateral)
+                perp_dx = -dy_norm
+                perp_dy = dx_norm
 
-            # Combinar movimento: para trás + lateral
-            # 70% para trás, 30% lateral
-            combined_dx = dx_norm * 0.7 + perp_dx * 0.3 * math.cos(angle_rad)
-            combined_dy = dy_norm * 0.7 + perp_dy * 0.3 * math.sin(angle_rad)
+                # Combinar movimento: para trás + lateral
+                # 70% para trás, 30% lateral
+                combined_dx = dx_norm * 0.7 + perp_dx * 0.3 * math.cos(angle_rad)
+                combined_dy = dy_norm * 0.7 + perp_dy * 0.3 * math.sin(angle_rad)
 
-            # Normalizar vetor combinado
-            combined_dist = math.sqrt(combined_dx**2 + combined_dy**2)
-            if combined_dist > 0:
-                combined_dx /= combined_dist
-                combined_dy /= combined_dist
+                # Normalizar vetor combinado
+                combined_dist = math.sqrt(combined_dx**2 + combined_dy**2)
+                if combined_dist > 0:
+                    combined_dx /= combined_dist
+                    combined_dy /= combined_dist
 
-            # Calcular ponto de kite
-            kite_x = self.config.center_x + int(combined_dx * target_distance)
-            kite_y = self.config.center_y + int(combined_dy * target_distance)
+                # Calcular ponto de kite
+                kite_x = self.config.center_x + int(combined_dx * target_distance)
+                kite_y = self.config.center_y + int(combined_dy * target_distance)
 
         # Garantir que está dentro da tela
         kite_x = max(100, min(self.config.screen_width - 100, kite_x))
