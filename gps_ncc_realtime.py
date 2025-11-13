@@ -442,7 +442,7 @@ class GPSRealtimeNCC:
             if verbose:
                 print("8️⃣ Fechando mapa...")
             self.click_button('close')
-            time.sleep(0.2)  # Otimizado para velocidade
+            time.sleep(0.4)  # Aumentado para garantir que mapa fechou completamente antes do próximo clique
 
         # Resultado
         resultado = {

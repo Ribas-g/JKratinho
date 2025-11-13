@@ -82,7 +82,7 @@ class NavegadorAutomaticoNCC:
 
         print(f"   📏 Distância de clique: {self.click_distance} pixels (no mapa mundo)")
 
-        self.wait_after_click = 0.2  # Tempo de espera após clique (reduzido para velocidade)
+        self.wait_after_click = 0.3  # Tempo de espera após clique para garantir que comando foi processado
         self.max_steps = 100  # Máximo de passos para evitar loop infinito
         self.tolerance_pixels = 30  # Tolerância para considerar "chegou" (em pixels)
         
