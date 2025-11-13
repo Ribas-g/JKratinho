@@ -147,7 +147,12 @@ class FarmIntegrado:
 
         # Inicializar farm bot
         print("\n🤖 Inicializando Farm Bot...")
-        self.farm_bot = ArcherFarmBot(model_path="FARM/rucoy_model_final.pt")
+
+        # Caminho absoluto do modelo (resolve corretamente no Windows e Linux)
+        model_path = Path(__file__).parent / "rucoy_model_final.pt"
+        print(f"   📦 Caminho do modelo: {model_path}")
+
+        self.farm_bot = ArcherFarmBot(model_path=str(model_path))
 
         if not self.farm_bot.conectar_bluestacks():
             print("❌ Falha ao conectar BlueStacks!")
@@ -155,6 +160,7 @@ class FarmIntegrado:
 
         if not self.farm_bot.carregar_modelo():
             print("❌ Falha ao carregar modelo YOLO!")
+            print(f"   ⚠️ Verifique se o arquivo existe: {model_path}")
             return False
 
         # Compartilhar dispositivo ADB
