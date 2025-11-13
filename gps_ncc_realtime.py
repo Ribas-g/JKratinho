@@ -233,14 +233,22 @@ class GPSRealtimeNCC:
 
         # GARANTIR que captured_map_gray é 2D (grayscale)
         if len(captured_map_gray.shape) == 3:
-            # Se for BGR (3 canais), converter para grayscale
-            captured_map_gray = cv2.cvtColor(captured_map_gray, cv2.COLOR_BGR2GRAY)
+            if captured_map_gray.shape[2] == 3:
+                # BGR (3 canais) -> Grayscale
+                captured_map_gray = cv2.cvtColor(captured_map_gray, cv2.COLOR_BGR2GRAY)
+            else:
+                # Shape (H, W, 1) -> (H, W)
+                captured_map_gray = captured_map_gray.squeeze()
 
         # GARANTIR que mapa de referência é 2D
         if len(self.mapa_pb_float.shape) == 3:
-            # Converter para grayscale se necessário
-            temp_gray = cv2.cvtColor((self.mapa_pb_float * 255).astype(np.uint8), cv2.COLOR_BGR2GRAY)
-            self.mapa_pb_float = img_as_float(temp_gray)
+            if self.mapa_pb_float.shape[2] == 3:
+                # BGR (3 canais) -> Grayscale
+                temp_gray = cv2.cvtColor((self.mapa_pb_float * 255).astype(np.uint8), cv2.COLOR_BGR2GRAY)
+                self.mapa_pb_float = img_as_float(temp_gray)
+            else:
+                # Shape (H, W, 1) -> (H, W)
+                self.mapa_pb_float = self.mapa_pb_float.squeeze()
 
         # Redimensionar captura
         h_original, w_original = captured_map_gray.shape
