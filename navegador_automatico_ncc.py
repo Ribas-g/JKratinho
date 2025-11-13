@@ -388,7 +388,7 @@ class NavegadorAutomaticoNCC:
             # Verificar com GPS se player andou
             if use_gps_confirm:
                 print(f"      🔍 Verificando se player andou (GPS)...")
-                pos_depois = self.gps.get_current_position(keep_map_open=True, verbose=False)
+                pos_depois = self.gps.get_current_position(keep_map_open=True, verbose=False, map_already_open=True)
                 x_depois, y_depois = pos_depois['x'], pos_depois['y']
 
                 # Calcular movimento (delta X e Y)
@@ -478,7 +478,7 @@ class NavegadorAutomaticoNCC:
                     # FASE 3: CONFIRMAÇÃO POR GPS
                     if use_gps_confirm:
                         print(f"      🔍 Confirmando com GPS...")
-                        pos_atual = self.gps.get_current_position(keep_map_open=True, verbose=False)
+                        pos_atual = self.gps.get_current_position(keep_map_open=True, verbose=False, map_already_open=True)
                         x_atual, y_atual = pos_atual['x'], pos_atual['y']
                         dist = self.calcular_distancia(x_atual, y_atual, destino_x, destino_y)
 
@@ -502,7 +502,7 @@ class NavegadorAutomaticoNCC:
         # Verificação final por GPS
         if use_gps_confirm:
             print(f"      🔍 Verificação final com GPS...")
-            pos_atual = self.gps.get_current_position(keep_map_open=True, verbose=False)
+            pos_atual = self.gps.get_current_position(keep_map_open=True, verbose=False, map_already_open=True)
             x_atual, y_atual = pos_atual['x'], pos_atual['y']
             dist = self.calcular_distancia(x_atual, y_atual, destino_x, destino_y)
 
@@ -889,11 +889,13 @@ class NavegadorAutomaticoNCC:
                 print("   🗺️ Usando pathfinding A*")
             print("=" * 60)
 
-        # Obter posição inicial
+        # Obter posição inicial (ABRE o mapa e MANTÉM ABERTO)
         print("\n📍 Obtendo posição inicial...")
-        pos = self.gps.get_current_position(keep_map_open=False, verbose=False)
+        print("   🗺️ Abrindo mapa (será mantido aberto durante navegação)...")
+        pos = self.gps.get_current_position(keep_map_open=True, verbose=False)
         x_inicial, y_inicial = pos['x'], pos['y']
         print(f"   Posição inicial: ({x_inicial}, {y_inicial}) - {pos['zone']}")
+        print(f"   ✅ Mapa aberto e será mantido durante toda navegação")
 
         # Calcular rota com pathfinding
         path_completo = None
@@ -984,9 +986,9 @@ class NavegadorAutomaticoNCC:
             if verbose:
                 print(f"\n▶️ Passo {step}/{max_steps}")
 
-            # 1. CAPTURAR TELA ATUAL e obter posição atual
+            # 1. CAPTURAR TELA ATUAL e obter posição atual (mapa JÁ está aberto)
             print("   1️⃣ Capturando tela atual e obtendo posição...")
-            pos = self.gps.get_current_position(keep_map_open=True, verbose=False)
+            pos = self.gps.get_current_position(keep_map_open=True, verbose=False, map_already_open=True)
             x_atual, y_atual = pos['x'], pos['y']
             print(f"      📍 Posição atual: ({x_atual}, {y_atual}) - {pos['zone']}")
             
@@ -1015,7 +1017,9 @@ class NavegadorAutomaticoNCC:
                 print(f"🎯 CHEGOU NO DESTINO!")
                 print(f"   Posição final: ({x_atual}, {y_atual})")
                 print(f"{'=' * 60}\n")
+                print("   🗺️ Fechando mapa...")
                 self.gps.click_button('close')
+                time.sleep(0.3)  # Aguardar mapa fechar
                 return True
             
             # 2.5. Verificar se player está preso (não se moveu nos últimos passos)
@@ -1343,7 +1347,9 @@ class NavegadorAutomaticoNCC:
 
         # Máximo de passos atingido
         print(f"\n⚠️ Máximo de passos ({max_steps}) atingido!")
+        print("   🗺️ Fechando mapa...")
         self.gps.click_button('close')
+        time.sleep(0.3)  # Aguardar mapa fechar
         return False
 
     def navegar_para_zona(self, nome_zona, verbose=True):

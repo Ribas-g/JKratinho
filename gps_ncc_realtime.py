@@ -368,13 +368,14 @@ class GPSRealtimeNCC:
         cv2.imwrite(filename_map, mapa_visual)
         print(f"   ✅ Mapa salvo: {filename_map}")
 
-    def get_current_position(self, keep_map_open=False, verbose=True):
+    def get_current_position(self, keep_map_open=False, verbose=True, map_already_open=False):
         """
         FUNÇÃO PRINCIPAL: Obtém posição atual do player
 
         Args:
             keep_map_open: Se True, mantém mapa aberto após captura
             verbose: Se True, mostra detalhes no console
+            map_already_open: Se True, não abre o mapa (assume que já está aberto)
 
         Returns:
             dict com:
@@ -388,11 +389,15 @@ class GPSRealtimeNCC:
             print("📍 OBTENDO POSIÇÃO GPS...")
             print("=" * 60)
 
-        # 1. Abrir mapa
-        if verbose:
-            print("\n1️⃣ Abrindo mapa in-game...")
-        self.click_button('open')
-        time.sleep(0.3)  # Aguardar animação (otimizado)
+        # 1. Abrir mapa (só se não estiver aberto)
+        if not map_already_open:
+            if verbose:
+                print("\n1️⃣ Abrindo mapa in-game...")
+            self.click_button('open')
+            time.sleep(0.3)  # Aguardar animação (otimizado)
+        else:
+            if verbose:
+                print("\n1️⃣ Mapa já está aberto, pulando...")
 
         # 2. Capturar screenshot
         if verbose:
