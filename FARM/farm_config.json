@@ -1,0 +1,15 @@
+{
+  "tile_size": 100,
+  "offset_x": 0,
+  "offset_y": 0,
+  "screen_width": 1600,
+  "screen_height": 900,
+  "center_x": 800,
+  "center_y": 450,
+  "ranges": {
+    "min_safe_distance": 1.0,
+    "ideal_distance": 2.0,
+    "max_attack_range": 4.0,
+    "aggro_range": 6.0
+  }
+}
