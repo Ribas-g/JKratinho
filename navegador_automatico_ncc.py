@@ -282,15 +282,19 @@ class NavegadorAutomaticoNCC:
         # Pequeno delay para garantir que o clique foi processado
         time.sleep(0.1)
 
-    def detectar_linha_verde(self):
+    def detectar_linha_verde(self, return_ratio=False):
         """
         Detecta linha verde no mapa (indica que player está em movimento)
 
         Player é CIANO (#00ffff) após levels → HSV: H=90, S=255, V=255
         Linha verde é VERDE PURO (#00ff00) → HSV: H=60, S=255, V=255
 
+        Args:
+            return_ratio: Se True, retorna (bool, ratio) ao invés de apenas bool
+
         Returns:
-            True se detectou linha verde
+            Se return_ratio=False: True se detectou linha verde
+            Se return_ratio=True: (True/False, green_ratio_percentage)
         """
         # Capturar screenshot
         screenshot = self.gps.capture_screen()
@@ -333,13 +337,23 @@ class NavegadorAutomaticoNCC:
         total_pixels = green_mask.shape[0] * green_mask.shape[1]
 
         if total_pixels == 0:
-            return False
+            return (False, 0.0) if return_ratio else False
 
         green_ratio = green_pixels / total_pixels
+        green_percentage = green_ratio * 100  # Converter para porcentagem
 
-        # Se mais de 0.02% é verde, há linha (threshold reduzido para detectar cliques curtos)
-        # Testado: movimento longo = 0.755%, cliques curtos = 0.038%
-        return green_ratio > 0.0002
+        # SISTEMA DE THRESHOLD ESCALONADO (ideia do usuário):
+        # 0-0.5% = Parado/ruído (falso positivo)
+        # 0.5-2% = Começando a andar (transição)
+        # 2%+ = Realmente andando (confirmado)
+
+        # Threshold ajustado: 0.5% (5x mais alto que antes)
+        # Reduz drasticamente falsos positivos
+        is_moving = green_ratio > 0.005  # 0.5% ao invés de 0.02%
+
+        if return_ratio:
+            return (is_moving, green_percentage)
+        return is_moving
 
     def aguardar_chegada(self, destino_x, destino_y, x_antes, y_antes, max_wait=10.0, use_gps_confirm=True):
         """
@@ -366,16 +380,36 @@ class NavegadorAutomaticoNCC:
         print(f"      ⏳ Aguardando movimento (de {x_antes},{y_antes} para {destino_x},{destino_y})...")
 
         # FASE 1: Aguardar linha verde APARECER (player começou a andar)
+        # MELHORIA: Verificar 2 frames consecutivos para evitar falsos positivos
         movimento_detectado = False
-        fase1_timeout = 1.0  # Timeout otimizado para velocidade
+        fase1_timeout = 0.8  # Timeout reduzido (mais rápido)
+        frames_consecutivos_movimento = 0  # Contador de frames com movimento
+        frames_necessarios = 2  # Precisa de 2 frames consecutivos
 
         while (time.time() - start_time) < fase1_timeout:
-            has_green = self.detectar_linha_verde()
+            has_green, green_pct = self.detectar_linha_verde(return_ratio=True)
 
             if has_green:
-                print(f"      ✅ Movimento iniciado (linha verde detectada)!")
-                movimento_detectado = True
-                break
+                frames_consecutivos_movimento += 1
+
+                # Mostrar porcentagem (barra de loading)
+                if green_pct >= 2.0:
+                    status = "andando forte"
+                elif green_pct >= 0.5:
+                    status = "começando"
+                else:
+                    status = "detectado"
+
+                print(f"         Verde: {green_pct:.2f}% ({status})")
+
+                # Confirmar movimento após frames consecutivos
+                if frames_consecutivos_movimento >= frames_necessarios:
+                    print(f"      ✅ Movimento confirmado ({frames_consecutivos_movimento} frames, {green_pct:.2f}%)!")
+                    movimento_detectado = True
+                    break
+            else:
+                # Resetar contador se perdeu movimento
+                frames_consecutivos_movimento = 0
 
             time.sleep(check_interval)
 
@@ -455,25 +489,27 @@ class NavegadorAutomaticoNCC:
         # FASE 2: Aguardar linha verde SUMIR (player parou)
         print(f"      ⏳ Aguardando parar...")
         consecutive_no_green = 0
-        required_no_green = 3
+        required_no_green = 2  # Reduzido para ser mais rápido (2 frames)
+        last_green_pct = 0
 
         while (time.time() - start_time) < max_wait:
-            has_green = self.detectar_linha_verde()
+            has_green, green_pct = self.detectar_linha_verde(return_ratio=True)
 
             if has_green:
                 consecutive_no_green = 0
+                last_green_pct = green_pct
 
-                # Print periódico
+                # Print periódico com porcentagem
                 current_time = time.time()
                 if current_time - last_print_time >= 2.0:
-                    print(f"         Ainda em movimento... ({int(current_time - start_time)}s)")
+                    print(f"         Ainda em movimento... ({int(current_time - start_time)}s, verde: {green_pct:.2f}%)")
                     last_print_time = current_time
             else:
                 consecutive_no_green += 1
 
                 # Linha verde sumiu consistentemente
                 if consecutive_no_green >= required_no_green:
-                    print(f"      ✅ Player parou (linha verde sumiu)!")
+                    print(f"      ✅ Player parou (verde: {last_green_pct:.2f}% → 0%)")
 
                     # FASE 3: CONFIRMAÇÃO POR GPS
                     if use_gps_confirm:
