@@ -146,17 +146,21 @@ class NavegadorAutomaticoNCC:
             map_capturado_width = map_region['width']   # 1600 pixels (TELA ORIGINAL)
             map_capturado_height = map_region['height'] # 899 pixels (TELA ORIGINAL)
             
-            # ESCALA PARA CLICAR: 1.0 (1:1)
-            # O GPS já faz a conversão correta internamente, então a relação final é 1:1
-            # Isso significa que 1 pixel do mapa mundo = 1 pixel da tela original
-            self.escala_x = 1.0
-            self.escala_y = 1.0
-            
+            # ESCALA PARA CLICAR: 5.0 (1 pixel mundo = 5 pixels tela)
+            # CORREÇÃO: O GPS reduz captura para 0.2x (1600px → 320px)
+            # As coordenadas retornadas pelo GPS estão na escala do matching (320px)
+            # Para converter de volta para a TELA ORIGINAL (1600px), precisamos:
+            # escala = tamanho_tela / tamanho_reduzido = 1600 / 320 = 5.0
+            # Ou: escala = 1 / escala_GPS = 1 / 0.2 = 5.0
+            self.escala_x = 5.0
+            self.escala_y = 5.0
+
             print(f"   ✅ Escala REAL calculada (para cliques na TELA ORIGINAL):")
             print(f"      Tela original (captura): {map_capturado_width}x{map_capturado_height} pixels")
-            print(f"      Escala cliques: X={self.escala_x:.4f}, Y={self.escala_y:.4f} (1:1)")
-            print(f"      💡 1 pixel do mapa mundo = 1 pixel na TELA ORIGINAL (para cliques)")
-            print(f"      ⚠️ IMPORTANTE: Cliques usam TELA ORIGINAL (GPS já faz conversão interna)!")
+            print(f"      Captura reduzida (GPS): {int(map_capturado_width * 0.2)}x{int(map_capturado_height * 0.2)} pixels (0.2x)")
+            print(f"      Escala cliques: X={self.escala_x:.4f}, Y={self.escala_y:.4f} (5:1)")
+            print(f"      💡 1 pixel do mapa mundo = 5 pixels na TELA ORIGINAL")
+            print(f"      ⚠️ Fórmula: escala = 1 / escala_GPS = 1 / 0.2 = 5.0")
             return
 
         # Carregar do arquivo
