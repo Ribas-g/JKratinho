@@ -20,6 +20,7 @@ from pathlib import Path
 
 sys.path.append('.')
 from gps_ncc_realtime import GPSRealtimeNCC
+from fast_capture import FastCapture
 
 
 class CalibradorManual:
@@ -28,6 +29,11 @@ class CalibradorManual:
         print("🚀 Inicializando GPS...")
         self.gps = GPSRealtimeNCC()
         self.device = self.gps.device
+
+        # Inicializar captura rápida (scrcpy ou ADB)
+        print("🚀 Inicializando captura rápida...")
+        self.fast_capture = FastCapture(device=self.device, preferred_method='auto')
+        self.fast_capture.start()
 
         # Centro do mapa (player sempre aqui)
         self.centro_mapa_x = 800
@@ -56,9 +62,9 @@ class CalibradorManual:
             return False
 
     def capturar_tela(self):
-        """Captura screenshot do dispositivo"""
+        """Captura screenshot do dispositivo via FastCapture"""
         try:
-            return self.gps.capture_screen()
+            return self.fast_capture.get_frame(timeout=1.0)
         except Exception as e:
             print(f"❌ Erro ao capturar tela: {e}")
             return None
@@ -492,6 +498,7 @@ class CalibradorManual:
 
 
 if __name__ == "__main__":
+    calibrador = None
     try:
         calibrador = CalibradorManual()
         calibrador.menu_principal()
@@ -504,3 +511,7 @@ if __name__ == "__main__":
         import traceback
         traceback.print_exc()
         exit(1)
+    finally:
+        # Limpar fast_capture
+        if calibrador is not None and hasattr(calibrador, 'fast_capture'):
+            calibrador.fast_capture.stop()
