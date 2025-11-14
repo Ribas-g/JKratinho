@@ -1,149 +1,149 @@
 {
-  "velocidade_px_s": 10664.265491667024,
-  "tempo_por_tile": 0.0030006754825266267,
+  "velocidade_px_s": 330.2984856700612,
+  "tempo_por_tile": 0.09688206694342871,
   "pixels_por_tile": 32,
   "metodo_calibracao": "mapa_aberto_ground_truth",
   "medicoes_detalhadas": [
     {
       "distancia_tiles": 1,
-      "tiles_ground_truth_medio": 30.333333333333332,
-      "distancia_media_px": 970.6666666666666,
-      "tempo_medio": 0.29002881050109863,
-      "velocidade_px_s": 3346.79394433123,
+      "tiles_ground_truth_medio": 0.3333333333333333,
+      "distancia_media_px": 10.666666666666666,
+      "tempo_medio": 0.28391488393147785,
+      "velocidade_px_s": 37.56994532643466,
       "medicoes_individuais": [
         {
-          "duracao": 0.2800159454345703,
-          "distancia_px": 1056,
-          "tiles_ground_truth": 33,
-          "velocidade": 3771.21380841774
+          "duracao": 0.2802913188934326,
+          "distancia_px": 32,
+          "tiles_ground_truth": 1,
+          "velocidade": 114.16693219873311
         },
         {
-          "duracao": 0.29358649253845215,
-          "distancia_px": 800,
-          "tiles_ground_truth": 25,
-          "velocidade": 2724.9210039703066
+          "duracao": 0.2851989269256592,
+          "distancia_px": 0,
+          "tiles_ground_truth": 0,
+          "velocidade": 0.0
         },
         {
-          "duracao": 0.29648399353027344,
-          "distancia_px": 1056,
-          "tiles_ground_truth": 33,
-          "velocidade": 3561.7437131295715
+          "duracao": 0.2862544059753418,
+          "distancia_px": 0,
+          "tiles_ground_truth": 0,
+          "velocidade": 0.0
         }
       ]
     },
     {
       "distancia_tiles": 2,
-      "tiles_ground_truth_medio": 65.0,
-      "distancia_media_px": 2080.0,
-      "tempo_medio": 0.28078269958496094,
-      "velocidade_px_s": 7407.86381452473,
+      "tiles_ground_truth_medio": 2.0,
+      "distancia_media_px": 64.0,
+      "tempo_medio": 0.2728861967722575,
+      "velocidade_px_s": 234.53000099309693,
       "medicoes_individuais": [
         {
-          "duracao": 0.29148101806640625,
-          "distancia_px": 2080,
-          "tiles_ground_truth": 65,
-          "velocidade": 7135.970684465384
+          "duracao": 0.26079773902893066,
+          "distancia_px": 64,
+          "tiles_ground_truth": 2,
+          "velocidade": 245.40090047674988
         },
         {
-          "duracao": 0.2798798084259033,
-          "distancia_px": 2080,
-          "tiles_ground_truth": 65,
-          "velocidade": 7431.761553998165
+          "duracao": 0.2793877124786377,
+          "distancia_px": 64,
+          "tiles_ground_truth": 2,
+          "velocidade": 229.07235050608574
         },
         {
-          "duracao": 0.27098727226257324,
-          "distancia_px": 2080,
-          "tiles_ground_truth": 65,
-          "velocidade": 7675.637245370635
+          "duracao": 0.2784731388092041,
+          "distancia_px": 64,
+          "tiles_ground_truth": 2,
+          "velocidade": 229.82467994462334
         }
       ]
     },
     {
       "distancia_tiles": 3,
-      "tiles_ground_truth_medio": 98.33333333333333,
-      "distancia_media_px": 3146.6666666666665,
-      "tempo_medio": 0.2814923922220866,
-      "velocidade_px_s": 11178.514068629138,
+      "tiles_ground_truth_medio": 3.0,
+      "distancia_media_px": 96.0,
+      "tempo_medio": 0.2828514575958252,
+      "velocidade_px_s": 339.40076114855043,
       "medicoes_individuais": [
         {
-          "duracao": 0.27013134956359863,
-          "distancia_px": 3104,
-          "tiles_ground_truth": 97,
-          "velocidade": 11490.706299045112
+          "duracao": 0.28340721130371094,
+          "distancia_px": 96,
+          "tiles_ground_truth": 3,
+          "velocidade": 338.7352056371015
         },
         {
-          "duracao": 0.2959132194519043,
-          "distancia_px": 3232,
-          "tiles_ground_truth": 101,
-          "velocidade": 10922.121039358659
+          "duracao": 0.2824594974517822,
+          "distancia_px": 96,
+          "tiles_ground_truth": 3,
+          "velocidade": 339.8717368899513
         },
         {
-          "duracao": 0.27843260765075684,
-          "distancia_px": 3104,
-          "tiles_ground_truth": 97,
-          "velocidade": 11148.11956182016
+          "duracao": 0.2826876640319824,
+          "distancia_px": 96,
+          "tiles_ground_truth": 3,
+          "velocidade": 339.597415149813
         }
       ]
     },
     {
       "distancia_tiles": 4,
-      "tiles_ground_truth_medio": 129.0,
-      "distancia_media_px": 4128.0,
-      "tempo_medio": 0.29472700754801434,
-      "velocidade_px_s": 14006.181633447699,
+      "tiles_ground_truth_medio": 4.0,
+      "distancia_media_px": 128.0,
+      "tempo_medio": 0.29012521107991535,
+      "velocidade_px_s": 441.1888216248199,
       "medicoes_individuais": [
         {
-          "duracao": 0.3002026081085205,
-          "distancia_px": 4128,
-          "tiles_ground_truth": 129,
-          "velocidade": 13750.713313282627
+          "duracao": 0.28916287422180176,
+          "distancia_px": 128,
+          "tiles_ground_truth": 4,
+          "velocidade": 442.6571023146556
         },
         {
-          "duracao": 0.28806567192077637,
-          "distancia_px": 4128,
-          "tiles_ground_truth": 129,
-          "velocidade": 14330.06568424189
+          "duracao": 0.28034329414367676,
+          "distancia_px": 128,
+          "tiles_ground_truth": 4,
+          "velocidade": 456.5830632438799
         },
         {
-          "duracao": 0.2959127426147461,
-          "distancia_px": 4128,
-          "tiles_ground_truth": 129,
-          "velocidade": 13950.058262189521
+          "duracao": 0.3008694648742676,
+          "distancia_px": 128,
+          "tiles_ground_truth": 4,
+          "velocidade": 425.4336678981059
         }
       ]
     },
     {
       "distancia_tiles": 5,
-      "tiles_ground_truth_medio": 161.33333333333334,
-      "distancia_media_px": 5162.666666666667,
-      "tempo_medio": 0.30529602368672687,
-      "velocidade_px_s": 16910.36327405374,
+      "tiles_ground_truth_medio": 5.333333333333333,
+      "distancia_media_px": 170.66666666666666,
+      "tempo_medio": 0.2911592324574788,
+      "velocidade_px_s": 586.1626479304275,
       "medicoes_individuais": [
         {
-          "duracao": 0.3018062114715576,
-          "distancia_px": 5152,
-          "tiles_ground_truth": 161,
-          "velocidade": 17070.556549779718
+          "duracao": 0.2910628318786621,
+          "distancia_px": 160,
+          "tiles_ground_truth": 5,
+          "velocidade": 549.7094870110402
         },
         {
-          "duracao": 0.3157486915588379,
-          "distancia_px": 5184,
-          "tiles_ground_truth": 162,
-          "velocidade": 16418.12029182706
+          "duracao": 0.29326868057250977,
+          "distancia_px": 160,
+          "tiles_ground_truth": 5,
+          "velocidade": 545.5747940341024
         },
         {
-          "duracao": 0.29833316802978516,
-          "distancia_px": 5152,
-          "tiles_ground_truth": 161,
-          "velocidade": 17269.283311755775
+          "duracao": 0.28914618492126465,
+          "distancia_px": 192,
+          "tiles_ground_truth": 6,
+          "velocidade": 664.0239782250012
         }
       ]
     }
   ],
-  "data_calibracao": "2025-11-14 13:30:35",
+  "data_calibracao": "2025-11-14 13:56:22",
   "posicao_inicial": {
-    "x": 349,
-    "y": 1136,
+    "x": 374,
+    "y": 1153,
     "zone": "Vila Inicial"
   }
 }
