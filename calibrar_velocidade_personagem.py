@@ -108,22 +108,48 @@ class CalibradorVelocidade:
         """
         Encontra um destino válido (walkable) a uma certa distância
 
+        IMPORTANTE: Usa distância MANHATTAN (grid-based) porque personagem
+        não anda em diagonal direta (movimento tipo torre de xadrez)
+
         Args:
             distancia_tiles: distância desejada em tiles
             max_tentativas: máximo de tentativas para encontrar destino válido
 
         Returns:
-            (tela_x, tela_y) ou None se não encontrar
+            (tela_x, tela_y, distancia_real_px) ou None se não encontrar
+            - tela_x, tela_y: coordenadas na tela
+            - distancia_real_px: distância MANHATTAN em pixels (real percorrida)
         """
-        distancia_px = distancia_tiles * self.pixels_por_tile
-
         for _ in range(max_tentativas):
-            # Ângulo aleatório
-            angulo = random.uniform(0, 2 * math.pi)
+            # PREFERÊNCIA CARDINAL: 80% chance de movimento reto
+            # Movimentos cardeais são mais eficientes e precisos
+            if random.random() < 0.8:
+                # Escolher direção cardinal aleatória
+                direcao = random.choice([
+                    (1, 0),   # Leste  →
+                    (-1, 0),  # Oeste  ←
+                    (0, 1),   # Sul    ↓
+                    (0, -1),  # Norte  ↑
+                ])
 
-            # Calcular offset
-            offset_x = int(distancia_px * math.cos(angulo))
-            offset_y = int(distancia_px * math.sin(angulo))
+                # Calcular offset para movimento cardinal puro
+                offset_x = direcao[0] * distancia_tiles * self.pixels_por_tile
+                offset_y = direcao[1] * distancia_tiles * self.pixels_por_tile
+
+            else:
+                # 20% chance: qualquer ângulo (diagonal)
+                # Personagem vai "escadear" para chegar
+                angulo = random.uniform(0, 2 * math.pi)
+                distancia_px = distancia_tiles * self.pixels_por_tile
+
+                offset_x = int(distancia_px * math.cos(angulo))
+                offset_y = int(distancia_px * math.sin(angulo))
+
+            # Calcular distância MANHATTAN (distância real que personagem vai percorrer)
+            # Exemplo: offset (100, 100) = diagonal
+            #   Euclidiana: sqrt(100² + 100²) = 141 pixels
+            #   Manhattan: |100| + |100| = 200 pixels ✅ CORRETO!
+            distancia_real_px = abs(offset_x) + abs(offset_y)
 
             # Coordenadas na tela
             tela_x = self.centro_x + offset_x
@@ -140,10 +166,10 @@ class CalibradorVelocidade:
 
             if mundo_x is None:
                 # Sem GPS ainda, aceitar qualquer destino na tela
-                return tela_x, tela_y
+                return tela_x, tela_y, distancia_real_px
 
             if self.validar_destino(mundo_x, mundo_y):
-                return tela_x, tela_y
+                return tela_x, tela_y, distancia_real_px
 
         # Não encontrou destino válido
         return None
@@ -306,7 +332,18 @@ class CalibradorVelocidade:
                     print(f"      ❌ Não encontrou destino walkable válido para {distancia_tiles} tiles")
                     continue
 
-                destino_x, destino_y = destino
+                # Desempacotar 3 valores: tela_x, tela_y, distancia_real_px (Manhattan)
+                destino_x, destino_y, distancia_real_px = destino
+
+                # Determinar tipo de movimento (cardinal vs diagonal)
+                offset_x = destino_x - self.centro_x
+                offset_y = destino_y - self.centro_y
+
+                # Se só um dos offsets é zero, é movimento cardinal (reto)
+                if offset_x == 0 or offset_y == 0:
+                    movimento_tipo = "cardinal (→←↑↓)"
+                else:
+                    movimento_tipo = "diagonal (escada)"
 
                 # Converter para mundo para mostrar no log
                 mundo_x, mundo_y = self.converter_tela_para_mundo(destino_x, destino_y)
@@ -315,18 +352,25 @@ class CalibradorVelocidade:
                 else:
                     print(f"      📍 Destino: ({destino_x}, {destino_y})")
 
+                print(f"      🧭 Movimento: {movimento_tipo}")
+                print(f"      📏 Distância real (Manhattan): {distancia_real_px} pixels")
+
                 duracao = self.medir_movimento(destino_x, destino_y, distancia_tiles)
 
                 if duracao is not None:
-                    medicoes_distancia.append(duracao)
+                    # IMPORTANTE: Usar distância MANHATTAN para calcular velocidade
+                    # (distância real que personagem percorre, não euclidiana)
+                    velocidade = distancia_real_px / duracao if duracao > 0 else 0
 
-                    # Calcular pixels percorridos
-                    pixels = distancia_tiles * self.pixels_por_tile
-                    velocidade = pixels / duracao if duracao > 0 else 0
+                    # Guardar medição com distância real
+                    medicoes_distancia.append({
+                        'duracao': duracao,
+                        'distancia_px': distancia_real_px,
+                        'tipo_movimento': movimento_tipo
+                    })
 
                     print(f"      ⏱️ Tempo: {duracao:.3f}s")
-                    print(f"      📏 Pixels: {pixels}")
-                    print(f"      🏃 Velocidade: {velocidade:.1f} px/s")
+                    print(f"      🏃 Velocidade: {velocidade:.1f} px/s (Manhattan)")
                 else:
                     print(f"      ❌ Medição falhou")
 
@@ -335,21 +379,36 @@ class CalibradorVelocidade:
 
             # Calcular média para esta distância
             if medicoes_distancia:
-                media = sum(medicoes_distancia) / len(medicoes_distancia)
-                pixels = distancia_tiles * self.pixels_por_tile
-                velocidade_media = pixels / media if media > 0 else 0
+                # Extrair durações e distâncias de cada medição
+                duracoes = [m['duracao'] for m in medicoes_distancia]
+                distancias = [m['distancia_px'] for m in medicoes_distancia]
+
+                # Média de tempo e distância
+                tempo_medio = sum(duracoes) / len(duracoes)
+                distancia_media = sum(distancias) / len(distancias)
+
+                # Velocidade média usando distância Manhattan real
+                velocidade_media = distancia_media / tempo_medio if tempo_medio > 0 else 0
+
+                # Contar tipos de movimento
+                cardinais = sum(1 for m in medicoes_distancia if 'cardinal' in m['tipo_movimento'])
+                diagonais = sum(1 for m in medicoes_distancia if 'diagonal' in m['tipo_movimento'])
 
                 self.medicoes.append({
                     'distancia_tiles': distancia_tiles,
-                    'pixels': pixels,
-                    'tempo_medio': media,
+                    'distancia_media_px': distancia_media,
+                    'tempo_medio': tempo_medio,
                     'velocidade_px_s': velocidade_media,
-                    'medicoes_individuais': medicoes_distancia
+                    'medicoes_individuais': medicoes_distancia,
+                    'cardinais': cardinais,
+                    'diagonais': diagonais
                 })
 
                 print(f"\n   📊 Média para {distancia_tiles} tiles:")
-                print(f"      ⏱️ Tempo: {media:.3f}s")
-                print(f"      🏃 Velocidade: {velocidade_media:.1f} px/s")
+                print(f"      ⏱️ Tempo médio: {tempo_medio:.3f}s")
+                print(f"      📏 Distância média: {distancia_media:.1f} px (Manhattan)")
+                print(f"      🏃 Velocidade média: {velocidade_media:.1f} px/s")
+                print(f"      🧭 Movimentos: {cardinais} cardinais, {diagonais} diagonais")
 
         # 3. Calcular velocidade global
         print("\n" + "=" * 70)
@@ -360,19 +419,27 @@ class CalibradorVelocidade:
             print("❌ Nenhuma medição bem-sucedida")
             return False
 
-        # Calcular média ponderada (dar mais peso para distâncias maiores)
-        total_pixels = sum(m['pixels'] for m in self.medicoes)
+        # Calcular média ponderada usando distâncias Manhattan reais
+        total_pixels = sum(m['distancia_media_px'] for m in self.medicoes)
         total_tempo = sum(m['tempo_medio'] for m in self.medicoes)
 
         velocidade_global = total_pixels / total_tempo if total_tempo > 0 else 0
         tempo_por_tile = self.pixels_por_tile / velocidade_global if velocidade_global > 0 else 0
 
-        print(f"\n🏃 Velocidade média global: {velocidade_global:.1f} pixels/segundo")
+        # Estatísticas de tipo de movimento
+        total_cardinais = sum(m['cardinais'] for m in self.medicoes)
+        total_diagonais = sum(m['diagonais'] for m in self.medicoes)
+        total_medicoes = total_cardinais + total_diagonais
+
+        print(f"\n🏃 Velocidade média global: {velocidade_global:.1f} pixels/segundo (Manhattan)")
         print(f"⏱️ Tempo por tile (32px): {tempo_por_tile:.3f} segundos")
+        print(f"🧭 Distribuição de movimentos:")
+        print(f"   Cardinal (→←↑↓): {total_cardinais}/{total_medicoes} ({100*total_cardinais/total_medicoes:.0f}%)")
+        print(f"   Diagonal (escada): {total_diagonais}/{total_medicoes} ({100*total_diagonais/total_medicoes:.0f}%)")
         print(f"\n📋 Detalhamento por distância:")
 
         for m in self.medicoes:
-            print(f"   {m['distancia_tiles']} tiles ({m['pixels']}px): {m['tempo_medio']:.3f}s @ {m['velocidade_px_s']:.1f} px/s")
+            print(f"   {m['distancia_tiles']} tiles ({m['distancia_media_px']:.0f}px Manhattan): {m['tempo_medio']:.3f}s @ {m['velocidade_px_s']:.1f} px/s")
 
         # 4. Salvar configuração
         print("\n" + "=" * 70)
