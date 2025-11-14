@@ -154,11 +154,9 @@ class CalibradorManual:
 
         # Executar click
         print(f"   👆 Clicando...")
-        if not self.executar_tap(mapa_x, mapa_y):
-            print("   ❌ Falha ao clicar")
-            return None
+        self.executar_tap(mapa_x, mapa_y)
 
-        # Aguardar linha verde aparecer (início do movimento)
+        # IMEDIATAMENTE começar a detectar linha verde (polling rápido!)
         tempo_inicio = None
         timeout = time.time() + 2.0
 
@@ -170,7 +168,7 @@ class CalibradorManual:
                 delay_inicio = tempo_inicio - tempo_click
                 print(f"   ✅ Movimento iniciou ({delay_inicio:.3f}s após click)")
                 break
-            time.sleep(0.02)  # 20ms entre verificações
+            time.sleep(0.01)  # 10ms polling = 100 FPS!
 
         if tempo_inicio is None:
             # Movimento muito rápido, usar tempo do click
@@ -189,7 +187,7 @@ class CalibradorManual:
                 duracao = tempo_fim - tempo_inicio
                 print(f"   ✅ Movimento completo em {duracao:.3f}s")
                 break
-            time.sleep(0.02)  # 20ms
+            time.sleep(0.01)  # 10ms polling = 100 FPS!
 
         if tempo_fim is None:
             print(f"   ⚠️ Timeout aguardando fim do movimento")
@@ -433,23 +431,12 @@ class CalibradorManual:
 
                         # Executar click
                         print(f"   👆 Clicando...")
-                        if not self.executar_tap(mapa_x, mapa_y):
-                            print("   ❌ Falha ao clicar")
-                            continue
+                        self.executar_tap(mapa_x, mapa_y)
 
-                        time.sleep(0.8)
-
-                        # Verificar linha verde
+                        # IMEDIATAMENTE verificar linha verde (sem delay!)
                         print("   🟢 Verificando linha verde...")
+                        time.sleep(0.05)  # Mínimo delay para linha aparecer
                         img = self.capturar_tela()
-
-                        # Salvar screenshot
-                        filename = f'DEBUG_escala_{direcao}_{tiles}tiles_f{self.fator_escala:.1f}.png'
-                        try:
-                            cv2.imwrite(filename, img)
-                            print(f"   💾 Screenshot: {filename}")
-                        except:
-                            pass
 
                         tem_linha = self.detectar_linha_verde(img)
 
