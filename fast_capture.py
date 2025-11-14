@@ -89,15 +89,14 @@ class FastCapture:
             print("⚠️ Scrcpy já está rodando")
             return True
 
-        # Comando scrcpy - tentar com mp4 que é mais compatível com ffmpeg
+        # Comando scrcpy 2.4 (muito mais simples e funcional que 3.x!)
         cmd = [
             'scrcpy',
-            '--no-playback',             # Sem janela visual (scrcpy 3.x+)
-            '--record=-',                # Output para stdout
-            '--record-format=mp4',       # MP4 é mais compatível que MKV
-            '--video-codec=h264',        # Codec H264
+            '--no-display',              # Sem janela visual (scrcpy 2.x)
+            '--record=-',                # Output para stdout (RAW H264!)
+            '--codec=h264',              # Codec H264 (scrcpy 2.x)
             '--max-fps=30',              # Limitar FPS
-            '--video-bit-rate=2M',       # Bitrate do vídeo (scrcpy 3.x+)
+            '--bit-rate=2M',             # Bitrate (scrcpy 2.x)
             '--no-audio'                 # Sem áudio
         ]
 
@@ -167,12 +166,10 @@ class FastCapture:
 
         print("✅ Scrcpy ainda rodando, iniciando ffmpeg...")
 
+        # FFmpeg para decodificar H264 raw do scrcpy 2.4
         ffmpeg_cmd = [
             'ffmpeg',
-            '-fflags', 'nobuffer',        # Sem buffering
-            '-flags', 'low_delay',        # Baixa latência
-            '-probesize', '32',           # Probe mínimo
-            '-analyzeduration', '0',      # Sem análise
+            '-f', 'h264',                 # Input é H264 raw (scrcpy 2.4 envia isso!)
             '-i', 'pipe:0',               # Input do pipe
             '-f', 'image2pipe',           # Output como sequência de imagens
             '-pix_fmt', 'bgr24',          # Formato BGR24 (OpenCV)

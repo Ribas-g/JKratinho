@@ -44,15 +44,14 @@ class ScrcpyCapture:
             print("⚠️ Scrcpy já está rodando")
             return
 
-        # Comando scrcpy minimalista para compatibilidade com scrcpy 3.3.3
+        # Comando scrcpy 2.4 (muito mais simples e funcional!)
         cmd = [
             'scrcpy',
-            '--no-playback',              # Sem janela visual (scrcpy 3.x+, era --no-display)
-            '--record=-',                 # Output para stdout
-            '--record-format=mkv',        # Formato obrigatório para stdout no scrcpy 3.3.3
-            '--video-codec=h264',         # Codec H264
+            '--no-display',               # Sem janela visual (scrcpy 2.x)
+            '--record=-',                 # Output para stdout (RAW H264!)
+            '--codec=h264',               # Codec H264 (scrcpy 2.x)
             f'--max-fps={self.max_fps}',  # Limitar FPS
-            f'--video-bit-rate={self.bit_rate}',  # Bitrate do vídeo (scrcpy 3.x+, era --bit-rate)
+            f'--bit-rate={self.bit_rate}', # Bitrate (scrcpy 2.x)
             '--no-audio'                  # Sem áudio
         ]
 
@@ -112,9 +111,10 @@ class ScrcpyCapture:
         """Loop de captura de frames (roda em thread separada)"""
         print("🎥 Loop de captura iniciado...")
 
-        # Usar ffmpeg para decodificar stream H264
+        # FFmpeg para decodificar H264 raw do scrcpy 2.4
         ffmpeg_cmd = [
             'ffmpeg',
+            '-f', 'h264',                # Input é H264 raw (scrcpy 2.4 envia isso!)
             '-i', 'pipe:0',              # Input do stdin
             '-f', 'image2pipe',          # Output como sequência de imagens
             '-pix_fmt', 'bgr24',         # Formato BGR (OpenCV)
