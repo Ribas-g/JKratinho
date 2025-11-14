@@ -92,11 +92,11 @@ class FastCapture:
         # Comando scrcpy 2.4 (parâmetros corretos!)
         cmd = [
             'scrcpy',
-            '--no-playback',             # Sem janela visual (mesmo na 2.4 já era --no-playback)
+            '--no-playback',             # Sem janela visual (2.4 usa --no-playback)
             '--record=-',                # Output para stdout (RAW H264!)
-            '--video-codec=h264',        # Codec H264 (2.4 usa --video-codec)
+            '--video-codec=h264',        # Codec H264
             '--max-fps=30',              # Limitar FPS
-            '--bit-rate=2M',             # Bitrate
+            '--video-bit-rate=2M',       # Bitrate do vídeo (2.4 já usa --video-bit-rate)
             '--no-audio'                 # Sem áudio
         ]
 

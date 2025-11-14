@@ -47,11 +47,11 @@ class ScrcpyCapture:
         # Comando scrcpy 2.4 (parâmetros corretos!)
         cmd = [
             'scrcpy',
-            '--no-playback',              # Sem janela visual (2.4 já usa --no-playback)
+            '--no-playback',              # Sem janela visual (2.4 usa --no-playback)
             '--record=-',                 # Output para stdout (RAW H264!)
-            '--video-codec=h264',         # Codec H264 (2.4 usa --video-codec)
+            '--video-codec=h264',         # Codec H264
             f'--max-fps={self.max_fps}',  # Limitar FPS
-            f'--bit-rate={self.bit_rate}', # Bitrate
+            f'--video-bit-rate={self.bit_rate}', # Bitrate do vídeo (2.4 já usa --video-bit-rate)
             '--no-audio'                  # Sem áudio
         ]
 
