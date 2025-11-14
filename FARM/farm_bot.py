@@ -30,6 +30,7 @@ import math
 from collections import deque
 from dataclasses import dataclass
 from typing import Optional, Tuple, List
+from mapa_virtual_tempo import MapaVirtualComTempo
 
 
 @dataclass
@@ -83,6 +84,17 @@ class ArcherFarmBot:
         self.model_path = model_path
         self.device = None
         self.model = None
+
+        # Mapa Virtual com Rastreamento Temporal
+        try:
+            self.mapa_virtual = MapaVirtualComTempo()
+            self.usar_mapa_virtual = True
+            print("✅ Mapa Virtual ativado!")
+        except Exception as e:
+            print(f"⚠️ Mapa Virtual não disponível: {e}")
+            print("   Bot funcionará sem validação de clicks")
+            self.mapa_virtual = None
+            self.usar_mapa_virtual = False
 
         # Estado do bot
         self.running = False
@@ -480,8 +492,33 @@ class ArcherFarmBot:
 
         return kite_x, kite_y
 
+    def atualizar_posicao_gps(self, mundo_x, mundo_y):
+        """
+        Atualiza posição GPS no mapa virtual
+        Deve ser chamado quando GPS retorna nova posição
+        """
+        if self.usar_mapa_virtual and self.mapa_virtual:
+            self.mapa_virtual.atualizar_posicao_gps(mundo_x, mundo_y)
+
+    def precisa_gps_recalibracao(self):
+        """
+        Verifica se precisa fazer GPS recalibração
+        """
+        if self.usar_mapa_virtual and self.mapa_virtual:
+            return self.mapa_virtual.precisa_gps()
+        return False
+
+    def executar_tap_direto(self, x, y):
+        """Executa tap direto no dispositivo (sem validação)"""
+        try:
+            self.device.shell(f"input tap {x} {y}")
+            return True
+        except Exception as e:
+            print(f"❌ Erro ao executar tap: {e}")
+            return False
+
     def executar_tap(self, x, y, description=""):
-        """Executa tap no emulador"""
+        """Executa tap no emulador com validação via mapa virtual"""
         try:
             # ZONA MORTA: Não clicar muito perto do personagem (centro da tela)
             # para evitar abrir menu do personagem
@@ -499,17 +536,30 @@ class ArcherFarmBot:
                     scale = DEAD_ZONE_RADIUS / dist_from_center
                     x = self.config.center_x + int(dx * scale)
                     y = self.config.center_y + int(dy * scale)
-                    print(f"   ⚠️ Clique ajustado para fora da zona morta")
+                    # print(f"   ⚠️ Clique ajustado para fora da zona morta")
                 else:
                     # Exatamente no centro, não clicar
                     print(f"   ⚠️ Clique cancelado: muito perto do personagem!")
                     return False
 
-            # Converter coordenadas se necessário (screen vs touch)
-            self.device.shell(f"input tap {x} {y}")
-            if description:
-                print(f"   🎯 Tap: {description} ({x}, {y})")
-            return True
+            # Se mapa virtual está ativo, usar validação temporal
+            if self.usar_mapa_virtual and self.mapa_virtual:
+                sucesso = self.mapa_virtual.executar_tap_com_validacao(
+                    x, y,
+                    self.executar_tap_direto
+                )
+
+                if sucesso and description:
+                    print(f"   🎯 Tap validado: {description}")
+
+                return sucesso
+            else:
+                # Fallback: executar tap direto sem validação
+                self.device.shell(f"input tap {x} {y}")
+                if description:
+                    print(f"   🎯 Tap: {description} ({x}, {y})")
+                return True
+
         except Exception as e:
             print(f"❌ Erro ao executar tap: {e}")
             return False
@@ -615,6 +665,20 @@ class ArcherFarmBot:
         img = self.capturar_frame()
         if img is None:
             return
+
+        # Verificar movimento completo (se mapa virtual ativo)
+        if self.usar_mapa_virtual and self.mapa_virtual:
+            if self.mapa_virtual.movimento_ativo:
+                # Verificar se movimento foi concluído
+                if self.mapa_virtual.verificar_movimento_completo(img):
+                    # Finalizar movimento e atualizar posição virtual
+                    self.mapa_virtual.finalizar_movimento()
+                else:
+                    # Movimento ainda em progresso, não executar novas ações
+                    # Apenas atualizar visualização se necessário
+                    if self.show_visualization:
+                        self.atualizar_display(img, [])
+                    return
 
         # Detectar
         deteccoes = self.detectar_objetos(img)
