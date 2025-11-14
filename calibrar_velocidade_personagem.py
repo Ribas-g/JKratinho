@@ -16,19 +16,19 @@ import numpy as np
 import time
 import json
 from pathlib import Path
-import subprocess
 import sys
 
 # Importar GPS
 sys.path.append('.')
-from gps_ncc_realtime import GPSNccRealtime
+from gps_ncc_realtime import GPSRealtimeNCC
 
 
 class CalibradorVelocidade:
     def __init__(self):
         """Inicializa calibrador"""
-        self.gps = GPSNccRealtime()
-        self.device_id = "127.0.0.1:5555"
+        self.gps = GPSRealtimeNCC()
+        # Usar device do GPS (já conectado)
+        self.device = self.gps.device
 
         # Região onde procurar linha verde (em torno do personagem)
         # O personagem fica no centro da tela (800, 450) em 1600x900
@@ -57,14 +57,7 @@ class CalibradorVelocidade:
     def capturar_tela(self):
         """Captura screenshot do dispositivo"""
         try:
-            cmd = f"adb -s {self.device_id} exec-out screencap -p"
-            result = subprocess.run(cmd, shell=True, capture_output=True, timeout=2)
-
-            if result.returncode == 0 and len(result.stdout) > 0:
-                img_array = np.frombuffer(result.stdout, np.uint8)
-                img = cv2.imdecode(img_array, cv2.IMREAD_COLOR)
-                return img
-            return None
+            return self.gps.capture_screen()
         except Exception as e:
             print(f"❌ Erro ao capturar tela: {e}")
             return None
@@ -95,8 +88,7 @@ class CalibradorVelocidade:
     def executar_tap(self, x, y):
         """Executa tap em coordenada específica"""
         try:
-            cmd = f"adb -s {self.device_id} shell input tap {x} {y}"
-            subprocess.run(cmd, shell=True, timeout=1)
+            self.device.shell(f"input tap {x} {y}")
             return True
         except Exception as e:
             print(f"❌ Erro ao executar tap: {e}")
@@ -181,38 +173,23 @@ class CalibradorVelocidade:
 
         # 1. GPS inicial
         print("\n📡 Obtendo posição inicial via GPS...")
-        img_inicial = self.capturar_tela()
 
-        if img_inicial is None:
-            print("❌ Falha ao capturar tela inicial")
+        # Obter posição GPS
+        print("   Obtendo posição GPS...")
+        try:
+            resultado = self.gps.get_current_position(keep_map_open=False, verbose=False)
+
+            if not resultado or 'x' not in resultado:
+                print("❌ GPS falhou")
+                return False
+
+            pos_inicial_x = resultado['x']
+            pos_inicial_y = resultado['y']
+            print(f"   ✅ Posição inicial: ({pos_inicial_x}, {pos_inicial_y})")
+            print(f"   🗺️ Zona: {resultado.get('zone', 'Desconhecida')}")
+        except Exception as e:
+            print(f"❌ Erro ao obter GPS: {e}")
             return False
-
-        # Abrir GPS
-        print("   Abrindo GPS...")
-        self.executar_tap(1550, 50)  # Botão GPS
-        time.sleep(1.5)
-
-        # Capturar mapa
-        img_gps = self.capturar_tela()
-        if img_gps is None:
-            print("❌ Falha ao capturar GPS")
-            return False
-
-        # Processar GPS
-        resultado = self.gps.processar_frame(img_gps)
-
-        # Fechar GPS
-        self.executar_tap(1550, 50)
-        time.sleep(0.5)
-
-        if not resultado or 'x' not in resultado:
-            print("❌ GPS falhou")
-            return False
-
-        pos_inicial_x = resultado['x']
-        pos_inicial_y = resultado['y']
-        print(f"   ✅ Posição inicial: ({pos_inicial_x}, {pos_inicial_y})")
-        print(f"   🗺️ Zona: {resultado.get('zone', 'Desconhecida')}")
 
         # 2. Testar diferentes distâncias
         print("\n" + "=" * 70)
