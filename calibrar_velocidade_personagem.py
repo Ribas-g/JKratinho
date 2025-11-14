@@ -516,38 +516,6 @@ class CalibradorVelocidade:
                         duracao = tempo_fim - tempo_inicio
                         print(f"      ⚠️ Timeout - assumindo movimento completo em {duracao:.3f}s")
 
-                    # GPS DE VERIFICAÇÃO: Confirmar que realmente andou
-                    print(f"      🔍 Verificando posição final com GPS...")
-                    resultado_final = self.gps.get_current_position(keep_map_open=True, verbose=False)
-
-                    if resultado_final and 'x' in resultado_final:
-                        pos_final_x = resultado_final['x']
-                        pos_final_y = resultado_final['y']
-
-                        # Calcular distância real andada
-                        delta_real_x = abs(pos_final_x - self.player_x)
-                        delta_real_y = abs(pos_final_y - self.player_y)
-                        distancia_real_andada = delta_real_x + delta_real_y  # Manhattan
-
-                        tiles_reais = distancia_real_andada / self.pixels_por_tile
-
-                        print(f"      📍 Posição inicial: ({self.player_x}, {self.player_y})")
-                        print(f"      📍 Posição final: ({pos_final_x}, {pos_final_y})")
-                        print(f"      📏 Distância REAL andada: {distancia_real_andada}px = {tiles_reais:.1f} tiles")
-
-                        # Comparar com esperado
-                        diferenca = abs(tiles_reais - tiles_linha_verde)
-                        if diferenca > 1.0:
-                            print(f"      ⚠️ ATENÇÃO: Diferença de {diferenca:.1f} tiles! (esperado: {tiles_linha_verde})")
-                        else:
-                            print(f"      ✅ Distância confere! (esperado: {tiles_linha_verde}, real: {tiles_reais:.1f})")
-
-                        # Atualizar posição para próxima iteração
-                        self.player_x = pos_final_x
-                        self.player_y = pos_final_y
-                    else:
-                        print(f"      ⚠️ GPS de verificação falhou")
-
                     # CALCULAR VELOCIDADE usando distância da linha verde (ground truth)
                     velocidade = distancia_real_px / duracao if duracao > 0 else 0
 
