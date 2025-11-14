@@ -39,6 +39,9 @@ class CalibradorVelocidade:
         # Inicializar A* pathfinding com o mapa colorido
         self.inicializar_pathfinding()
 
+        # Carregar configuração de mapa (centro e escala)
+        self.carregar_configuracao_mapa()
+
         # Região onde procurar linha verde (em torno do personagem)
         # O personagem fica no centro da tela (800, 450) em 1600x900
         self.centro_x = 800
@@ -103,6 +106,57 @@ class CalibradorVelocidade:
             print(f"   ⚠️ Erro ao inicializar pathfinder: {e}")
             print("   Calibração usará Manhattan sem A*")
             self.pathfinder = None
+
+    def carregar_configuracao_mapa(self):
+        """Carrega configuração de transformação mundo → tela (do navegador)"""
+        try:
+            with open('map_transform_config.json', 'r', encoding='utf-8') as f:
+                config = json.load(f)
+
+            self.centro_mapa_x = config['centro_mapa_tela']['x']
+            self.centro_mapa_y = config['centro_mapa_tela']['y']
+            self.escala_x = config['escala']['x']
+            self.escala_y = config['escala']['y']
+
+            print(f"   ✅ Configuração de mapa carregada")
+            print(f"   📍 Centro do mapa na tela: ({self.centro_mapa_x}, {self.centro_mapa_y})")
+            print(f"   📏 Escala: X={self.escala_x:.4f}, Y={self.escala_y:.4f}")
+
+        except FileNotFoundError:
+            print("   ⚠️ map_transform_config.json não encontrado!")
+            print("   Execute calibração do navegador primeiro")
+            print("   Usando valores padrão...")
+
+            # Valores padrão (assumindo mapa fullscreen 1600x900)
+            self.centro_mapa_x = 800
+            self.centro_mapa_y = 450
+            self.escala_x = 5.0
+            self.escala_y = 5.0
+
+    def mundo_para_tela_mapa(self, x_mundo, y_mundo, x_atual, y_atual):
+        """
+        Converte coordenadas mundo → tela do mapa (COM MAPA ABERTO)
+
+        IMPORTANTE: Player SEMPRE no centro do mapa.
+        Calcula delta e aplica escala.
+
+        Args:
+            x_mundo, y_mundo: Destino no mapa mundo
+            x_atual, y_atual: Posição atual do player no mapa mundo
+
+        Returns:
+            (x_tela, y_tela): Coordenadas para clicar no mapa
+        """
+        # Delta (quanto precisa andar)
+        delta_x = x_mundo - x_atual
+        delta_y = y_mundo - y_atual
+
+        # Aplicar escala e somar ao centro
+        # Player está SEMPRE no centro do mapa
+        x_tela = int(self.centro_mapa_x + delta_x * self.escala_x)
+        y_tela = int(self.centro_mapa_y + delta_y * self.escala_y)
+
+        return (x_tela, y_tela)
 
     def converter_tela_para_mundo(self, tela_x, tela_y):
         """Converte coordenadas da tela para coordenadas do mundo"""
@@ -232,7 +286,7 @@ class CalibradorVelocidade:
 
     def detectar_linha_verde(self, img):
         """
-        Detecta se linha verde está presente na imagem
+        Detecta se linha verde está presente na imagem (TELA DE JOGO)
         Retorna True se linha verde detectada
         """
         if img is None:
@@ -252,6 +306,77 @@ class CalibradorVelocidade:
 
         # Threshold: precisa de pelo menos 50 pixels verdes para considerar linha presente
         return pixels_verdes > 50
+
+    def detectar_linha_verde_no_mapa(self, img):
+        """
+        Detecta e conta tiles da linha verde NO MAPA (roxa/magenta)
+
+        A linha verde aparece no mapa quando você clica em um destino,
+        mostrando o caminho que o personagem vai percorrer.
+
+        Retorna:
+            int: Número de tiles da linha verde (ground truth!)
+            None: Se não detectou linha
+        """
+        if img is None:
+            return None
+
+        # Converter para HSV
+        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+
+        # Linha verde no mapa pode ser roxa/magenta (H~150) ou verde (H~50-70)
+        # Vamos testar ambos os ranges
+
+        # Range para roxo/magenta (comum em mapas)
+        roxa_lower = np.array([140, 100, 100])
+        roxa_upper = np.array([170, 255, 255])
+
+        # Range para verde (linha de movimento)
+        verde_lower = np.array([40, 100, 100])
+        verde_upper = np.array([80, 255, 255])
+
+        # Criar máscaras
+        mask_roxa = cv2.inRange(hsv, roxa_lower, roxa_upper)
+        mask_verde = cv2.inRange(hsv, verde_lower, verde_upper)
+
+        # Combinar máscaras
+        mask = cv2.bitwise_or(mask_roxa, mask_verde)
+
+        # Contar pixels da linha
+        pixels_linha = cv2.countNonZero(mask)
+
+        if pixels_linha < 100:  # Threshold mínimo
+            return None
+
+        # Estimar número de tiles baseado nos pixels
+        # Cada tile = ~32 pixels, mas na escala do mapa com zoom
+        # Como escala é ~5.0, cada tile no mapa = 32 * 5 = 160 pixels
+        # Mas a LINHA tem largura também, então:
+        # Estimativa: tiles ≈ pixels_linha / (largura_linha * pixels_por_tile_mapa)
+
+        # Por simplicidade, vamos usar morfologia para encontrar o "esqueleto" da linha
+        # e contar o comprimento
+        kernel = np.ones((3,3), np.uint8)
+        linha_fina = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+        linha_fina = cv2.morphologyEx(linha_fina, cv2.MORPH_OPEN, kernel)
+
+        # Encontrar contornos
+        contours, _ = cv2.findContours(linha_fina, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        if not contours:
+            return None
+
+        # Pegar maior contorno (a linha principal)
+        maior_contorno = max(contours, key=cv2.contourArea)
+
+        # Calcular comprimento do contorno (aproximação do caminho)
+        comprimento_pixels = cv2.arcLength(maior_contorno, closed=False)
+
+        # Converter para tiles
+        # pixels no mapa / (pixels_por_tile * escala) = tiles
+        tiles = comprimento_pixels / (self.pixels_por_tile * self.escala_x)
+
+        return int(tiles)
 
     def executar_tap(self, x, y):
         """Executa tap em coordenada específica"""
