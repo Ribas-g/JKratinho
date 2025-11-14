@@ -95,7 +95,7 @@ class FastCapture:
             '--record=-',
             '--video-codec=h264',
             '--max-fps=30',
-            '--bit-rate=2M',
+            '--video-bit-rate=2M',  # Scrcpy 3.x usa --video-bit-rate (era --bit-rate)
             '--no-audio',
             '--power-off-on-close=false'
         ]
