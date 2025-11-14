@@ -53,6 +53,7 @@ class CameraVirtual:
         # Escalas (pixels por tile)
         self.pixels_por_tile_mundo = 32  # No mundo (coordenadas absolutas)
         self.pixels_por_tile_tela = 32   # Na tela do jogo (mesma escala!)
+        self.pixels_por_tile_mapa = 20   # No mapa (minimap comprimido)
 
         # Posição virtual do personagem (coordenadas mundo)
         self.pos_x = None
@@ -62,8 +63,17 @@ class CameraVirtual:
         self.movimentos_desde_gps = 0
         self.max_movimentos_sem_gps = 5  # Corrigir a cada 5 movimentos
 
-        # Limite de clique (campo de visão)
-        # Não podemos clicar muito longe do personagem!
+        # Campo de visão (RETÂNGULO da tela do jogo)
+        # Tela: 1600x900 pixels (32px/tile)
+        # Convertido para mapa: usar escala 20px/tile
+        self.fov_largura_tiles = self.tela_largura / self.pixels_por_tile_mundo  # 50 tiles
+        self.fov_altura_tiles = self.tela_altura / self.pixels_por_tile_mundo    # 28.125 tiles
+
+        # Dimensões do FOV no mapa mundo (em pixels)
+        self.fov_largura_mapa = self.fov_largura_tiles * self.pixels_por_tile_mapa  # 1000px
+        self.fov_altura_mapa = self.fov_altura_tiles * self.pixels_por_tile_mapa    # 562.5px
+
+        # Limite de clique (campo de visão) - agora baseado no retângulo
         self.max_clique_tiles = 6  # 6 tiles = 192 pixels
         self.max_clique_pixels = self.max_clique_tiles * self.pixels_por_tile_tela
 
@@ -71,7 +81,9 @@ class CameraVirtual:
         self.historico_erros = []
 
         print("🎥 Câmera Virtual inicializada!")
-        print(f"   Campo de visão: {self.max_clique_tiles} tiles ({self.max_clique_pixels}px)")
+        print(f"   Tela do jogo: {self.tela_largura}x{self.tela_altura}px")
+        print(f"   Campo de visão (tiles): {self.fov_largura_tiles:.1f}x{self.fov_altura_tiles:.1f}")
+        print(f"   Campo de visão (mapa): {self.fov_largura_mapa:.0f}x{self.fov_altura_mapa:.0f}px")
         print(f"   GPS a cada {self.max_movimentos_sem_gps} movimentos")
 
     def inicializar_posicao(self):
@@ -342,11 +354,11 @@ class CameraVirtual:
 
     def desenhar_campo_visao(self, img_mundo, cor=(0, 255, 255), thickness=2):
         """
-        Desenha campo de visão no mapa mundo (para debug)
+        Desenha campo de visão no mapa mundo (RETÂNGULO da tela do jogo)
 
         Args:
             img_mundo: Imagem do mapa mundo
-            cor: Cor BGR do círculo
+            cor: Cor BGR do retângulo
             thickness: Espessura da linha
 
         Returns:
@@ -357,16 +369,26 @@ class CameraVirtual:
 
         img = img_mundo.copy()
 
-        # Desenhar círculo do campo de visão
-        cv2.circle(
+        # Calcular cantos do retângulo FOV (centralizado no personagem)
+        # Dimensões no mapa mundo
+        half_width = self.fov_largura_mapa / 2
+        half_height = self.fov_altura_mapa / 2
+
+        x1 = int(self.pos_x - half_width)
+        y1 = int(self.pos_y - half_height)
+        x2 = int(self.pos_x + half_width)
+        y2 = int(self.pos_y + half_height)
+
+        # Desenhar retângulo do campo de visão
+        cv2.rectangle(
             img,
-            (int(self.pos_x), int(self.pos_y)),
-            int(self.max_clique_pixels),
+            (x1, y1),
+            (x2, y2),
             cor,
             thickness
         )
 
-        # Desenhar posição do personagem
+        # Desenhar posição do personagem (centro do retângulo)
         cv2.circle(
             img,
             (int(self.pos_x), int(self.pos_y)),
@@ -378,8 +400,8 @@ class CameraVirtual:
         # Texto
         cv2.putText(
             img,
-            f"Campo de visao: {self.max_clique_tiles} tiles",
-            (int(self.pos_x) - 100, int(self.pos_y) - self.max_clique_pixels - 10),
+            f"FOV: {self.fov_largura_tiles:.0f}x{self.fov_altura_tiles:.0f} tiles ({int(self.fov_largura_mapa)}x{int(self.fov_altura_mapa)}px)",
+            (x1, y1 - 10),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.6,
             cor,
@@ -423,7 +445,7 @@ class VisualizadorCameraVirtual:
         self.historico_posicoes = []  # Lista de posições anteriores
 
         # Cores
-        self.cor_campo_visao = (0, 255, 255)      # Amarelo (campo de visão)
+        self.cor_campo_visao = (0, 255, 255)      # Amarelo (FOV - retângulo da tela)
         self.cor_posicao = (255, 0, 255)          # Magenta (posição atual)
         self.cor_historico = (128, 128, 128)      # Cinza (histórico)
         self.cor_destino = (0, 255, 0)            # Verde (próximo destino)
@@ -471,17 +493,27 @@ class VisualizadorCameraVirtual:
                 p2 = self.historico_posicoes[i + 1]
                 cv2.line(img, p1, p2, self.cor_historico, 2)
 
-        # 2. Desenhar campo de visão (círculo amarelo)
+        # 2. Desenhar campo de visão (RETÂNGULO amarelo - tela do jogo)
         if self.camera.pos_x is not None:
-            cv2.circle(
+            # Calcular cantos do retângulo FOV
+            half_width = self.camera.fov_largura_mapa / 2
+            half_height = self.camera.fov_altura_mapa / 2
+
+            x1 = int(self.camera.pos_x - half_width)
+            y1 = int(self.camera.pos_y - half_height)
+            x2 = int(self.camera.pos_x + half_width)
+            y2 = int(self.camera.pos_y + half_height)
+
+            # Desenhar retângulo
+            cv2.rectangle(
                 img,
-                (int(self.camera.pos_x), int(self.camera.pos_y)),
-                int(self.camera.max_clique_pixels),
+                (x1, y1),
+                (x2, y2),
                 self.cor_campo_visao,
                 3
             )
 
-            # 3. Desenhar posição atual (círculo magenta)
+            # 3. Desenhar posição atual (círculo magenta no centro)
             cv2.circle(
                 img,
                 (int(self.camera.pos_x), int(self.camera.pos_y)),
@@ -575,7 +607,8 @@ class VisualizadorCameraVirtual:
         info_lines = [
             f"Camera Virtual - Debug ao Vivo",
             f"Posicao: ({int(self.camera.pos_x) if self.camera.pos_x else '?'}, {int(self.camera.pos_y) if self.camera.pos_y else '?'})",
-            f"Campo de visao: {self.camera.max_clique_tiles} tiles ({self.camera.max_clique_pixels}px)",
+            f"FOV: {self.camera.fov_largura_tiles:.0f}x{self.camera.fov_altura_tiles:.0f} tiles",
+            f"FOV mapa: {int(self.camera.fov_largura_mapa)}x{int(self.camera.fov_altura_mapa)}px",
             f"Movimentos desde GPS: {self.camera.movimentos_desde_gps}/{self.camera.max_movimentos_sem_gps}",
             f"Historico: {len(self.historico_posicoes)} posicoes",
             f"Zoom: {self.zoom_level:.1f}x"
