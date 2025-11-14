@@ -1,0 +1,11 @@
+{
+  "centro_mapa_tela": {
+    "x": 800,
+    "y": 450
+  },
+  "escala": {
+    "x": 20.0,
+    "y": 20.0
+  },
+  "observacoes": "Calibrado manualmente usando calibrar_mapa_manual.py - Teste: 6 tiles esquerda = 120 pixels no mapa"
+}
