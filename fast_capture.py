@@ -1,13 +1,13 @@
 """
 FAST CAPTURE - Sistema híbrido de captura rápida
 
-Tenta usar scrcpy (30-50ms latência) se disponível
-Fallback para ADB otimizado (~300ms) se scrcpy não estiver instalado
+Tenta usar adbnativeblitz (50-80ms) se disponível
+Fallback para ADB screencap (~300ms) se não instalado
 
-Para instalar scrcpy e obter máxima performance:
-  sudo apt install scrcpy ffmpeg
-  # ou
-  sudo snap install scrcpy
+Para instalar adbnativeblitz e obter alta performance:
+  pip install adbnativeblitz
+
+Requer Python 3.11+
 """
 
 import subprocess
@@ -20,27 +20,26 @@ import shutil
 
 
 class FastCapture:
-    """Captura rápida com fallback automático scrcpy → ADB"""
+    """Captura rápida com fallback automático adbnativeblitz → ADB"""
 
     def __init__(self, device=None, preferred_method='auto'):
         """
         Args:
             device: Device ppadb (para fallback ADB)
-            preferred_method: 'scrcpy', 'adb', ou 'auto' (tenta scrcpy primeiro)
+            preferred_method: 'adbnativeblitz', 'adb', ou 'auto' (tenta adbnativeblitz primeiro)
         """
         self.device = device
         self.preferred_method = preferred_method
         self.active_method = None
 
-        # Extrair serial do device (para scrcpy --serial)
+        # Extrair serial do device
         self.device_serial = None
         if device is not None and hasattr(device, 'serial'):
             self.device_serial = device.serial
 
-        # Scrcpy vars
-        self.scrcpy_process = None
-        self.ffmpeg_process = None
-        self.capture_thread = None
+        # adbnativeblitz vars
+        self.adbblitz = None
+        self.adbblitz_thread = None
         self.frame_queue = queue.Queue(maxsize=2)
         self.running = False
         self.last_frame = None
@@ -56,32 +55,107 @@ class FastCapture:
             print("📱 Usando ADB screencap (~300ms latência)")
             return
 
-        # Verificar se scrcpy está disponível
-        scrcpy_available = shutil.which('scrcpy') is not None
-        ffmpeg_available = shutil.which('ffmpeg') is not None
-
-        if scrcpy_available and ffmpeg_available:
-            self.active_method = 'scrcpy'
-            print("🚀 Usando SCRCPY (~30-50ms latência)")
-        else:
+        # Verificar se adbnativeblitz está disponível
+        try:
+            import adbnativeblitz
+            self.active_method = 'adbnativeblitz'
+            print("🚀 Usando adbnativeblitz (~50-80ms latência)")
+        except ImportError:
             self.active_method = 'adb'
             print("📱 Usando ADB screencap (~300ms latência)")
-
-            if not scrcpy_available or not ffmpeg_available:
-                print("\n⚠️  SCRCPY NÃO ENCONTRADO - Para captura 10x mais rápida:")
-                print("    sudo apt install scrcpy ffmpeg")
-                print("    # ou")
-                print("    sudo snap install scrcpy")
-                print()
+            print("\n⚠️  ADBNATIVEBLITZ NÃO ENCONTRADO - Para captura 5x mais rápida:")
+            print("    pip install adbnativeblitz")
+            print()
 
     def start(self):
         """Inicia captura"""
-        if self.active_method == 'scrcpy':
-            return self._start_scrcpy()
+        if self.active_method == 'adbnativeblitz':
+            return self._start_adbnativeblitz()
         else:
             # ADB não precisa start
             print("✅ ADB pronto para capturas")
             return True
+
+    def _start_adbnativeblitz(self):
+        """Inicia captura via adbnativeblitz"""
+        try:
+            from adbnativeblitz import AdbFastScreenshots
+            import os
+
+            # Encontrar adb.exe
+            adb_path = shutil.which('adb')
+            if not adb_path:
+                print("❌ ADB não encontrado no PATH")
+                self.active_method = 'adb'
+                return True
+
+            print(f"🚀 Iniciando adbnativeblitz (device: {self.device_serial})...")
+
+            # Iniciar adbnativeblitz
+            self.adbblitz = AdbFastScreenshots(
+                adb_path=adb_path,
+                device_serial=self.device_serial,
+                time_interval=179,  # Máximo antes de reiniciar
+                width=1600,
+                height=900,
+                bitrate="20M",
+                screenshotbuffer=10,
+                go_idle=0  # 0 = máxima performance
+            )
+
+            # Entrar no context manager
+            self.adbblitz.__enter__()
+
+            # Iniciar thread para consumir frames
+            self.running = True
+            self.adbblitz_thread = threading.Thread(target=self._adbnativeblitz_loop, daemon=True)
+            self.adbblitz_thread.start()
+
+            # Aguardar primeiro frame
+            print("⏳ Aguardando primeiro frame...")
+            timeout = time.time() + 5
+            while self.last_frame is None and time.time() < timeout:
+                time.sleep(0.1)
+
+            if self.last_frame is not None:
+                h, w = self.last_frame.shape[:2]
+                print(f"✅ adbnativeblitz ativo! Resolução: {w}x{h}")
+                return True
+            else:
+                print("⚠️ Timeout - voltando para ADB")
+                self.stop()
+                self.active_method = 'adb'
+                return True
+
+        except Exception as e:
+            print(f"⚠️ adbnativeblitz falhou: {e}")
+            print("   Voltando para ADB...")
+            self.stop()
+            self.active_method = 'adb'
+            return True
+
+    def _adbnativeblitz_loop(self):
+        """Loop de captura adbnativeblitz"""
+        try:
+            for frame in self.adbblitz:
+                if not self.running:
+                    break
+
+                self.last_frame = frame
+                self.last_frame_time = time.time()
+
+                # Atualizar queue
+                try:
+                    self.frame_queue.put_nowait(frame)
+                except queue.Full:
+                    try:
+                        self.frame_queue.get_nowait()
+                    except queue.Empty:
+                        pass
+                    self.frame_queue.put_nowait(frame)
+        except Exception as e:
+            if self.running:
+                print(f"⚠️ Erro no loop adbnativeblitz: {e}")
 
     def _start_scrcpy(self):
         """Inicia captura via scrcpy"""
@@ -236,11 +310,29 @@ class FastCapture:
             print(f"❌ Erro no loop scrcpy: {e}")
 
     def get_frame(self, timeout=1.0):
-        """Captura frame (automático via scrcpy ou ADB)"""
-        if self.active_method == 'scrcpy':
-            return self._get_frame_scrcpy(timeout)
+        """Captura frame (automático via adbnativeblitz ou ADB)"""
+        if self.active_method == 'adbnativeblitz':
+            return self._get_frame_adbnativeblitz(timeout)
         else:
             return self._get_frame_adb()
+
+    def _get_frame_adbnativeblitz(self, timeout=1.0):
+        """Pega frame do adbnativeblitz (baixa latência)"""
+        if not self.running:
+            return None
+
+        # Retornar último frame se recente
+        if self.last_frame is not None:
+            age = time.time() - self.last_frame_time
+            if age < 1.0:
+                return self.last_frame.copy()
+
+        # Aguardar novo frame
+        try:
+            frame = self.frame_queue.get(timeout=timeout)
+            return frame.copy()
+        except queue.Empty:
+            return None
 
     def _get_frame_scrcpy(self, timeout=1.0):
         """Pega frame do scrcpy (baixa latência)"""
@@ -275,25 +367,24 @@ class FastCapture:
 
     def stop(self):
         """Para captura"""
-        if self.active_method == 'scrcpy':
+        if self.active_method == 'adbnativeblitz':
             self.running = False
 
-            if self.capture_thread:
-                self.capture_thread.join(timeout=2)
+            if self.adbblitz_thread:
+                self.adbblitz_thread.join(timeout=2)
 
-            if self.scrcpy_process:
-                self.scrcpy_process.terminate()
+            if self.adbblitz:
                 try:
-                    self.scrcpy_process.wait(timeout=2)
-                except subprocess.TimeoutExpired:
-                    self.scrcpy_process.kill()
+                    self.adbblitz.__exit__(None, None, None)
+                except:
+                    pass
 
-            print("✅ Scrcpy parado")
+            print("✅ adbnativeblitz parado")
 
     def get_latency_estimate(self):
         """Retorna estimativa de latência do método ativo"""
-        if self.active_method == 'scrcpy':
-            return 0.04  # ~40ms
+        if self.active_method == 'adbnativeblitz':
+            return 0.06  # ~60ms
         else:
             return 0.30  # ~300ms
 
