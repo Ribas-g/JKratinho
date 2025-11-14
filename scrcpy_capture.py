@@ -44,16 +44,15 @@ class ScrcpyCapture:
             print("⚠️ Scrcpy já está rodando")
             return
 
-        # Comando scrcpy
+        # Comando scrcpy minimalista para compatibilidade com scrcpy 3.3.3
         cmd = [
             'scrcpy',
-            '--no-playback',             # Sem janela visual (scrcpy 3.x+, era --no-display)
-            '--record=-',                # Output para stdout
-            '--video-codec=h264',        # Codec H264
-            f'--max-fps={self.max_fps}', # Limitar FPS
-            f'--bit-rate={self.bit_rate}', # Bitrate
-            '--no-audio',                # Sem áudio
-            '--power-off-on-close=false' # Não desligar tela ao fechar
+            '--no-playback',              # Sem janela visual (scrcpy 3.x+, era --no-display)
+            '--record=-',                 # Output para stdout
+            '--video-codec=h264',         # Codec H264
+            f'--max-fps={self.max_fps}',  # Limitar FPS
+            f'--video-bit-rate={self.bit_rate}',  # Bitrate do vídeo (scrcpy 3.x+, era --bit-rate)
+            '--no-audio'                  # Sem áudio
         ]
 
         if self.device_id:
