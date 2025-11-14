@@ -49,6 +49,7 @@ class ScrcpyCapture:
             'scrcpy',
             '--no-playback',              # Sem janela visual (scrcpy 3.x+, era --no-display)
             '--record=-',                 # Output para stdout
+            '--record-format=mkv',        # Formato obrigatório para stdout no scrcpy 3.3.3
             '--video-codec=h264',         # Codec H264
             f'--max-fps={self.max_fps}',  # Limitar FPS
             f'--video-bit-rate={self.bit_rate}',  # Bitrate do vídeo (scrcpy 3.x+, era --bit-rate)

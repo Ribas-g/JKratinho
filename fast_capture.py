@@ -94,6 +94,7 @@ class FastCapture:
             'scrcpy',
             '--no-playback',             # Sem janela visual (scrcpy 3.x+)
             '--record=-',                # Output para stdout
+            '--record-format=mkv',       # Formato obrigatório para stdout no scrcpy 3.3.3
             '--video-codec=h264',        # Codec H264
             '--max-fps=30',              # Limitar FPS
             '--video-bit-rate=2M',       # Bitrate do vídeo (scrcpy 3.x+)
