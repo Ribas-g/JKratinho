@@ -195,15 +195,15 @@ class CalibradorVelocidade:
         Encontra um destino válido usando A* pathfinding
 
         IMPORTANTE: Usa A* para calcular caminho REAL contornando paredes.
-        Não usa Manhattan simples porque pode haver obstáculos no caminho.
+        A* retorna caminho em PIXELS (cada ponto = 1 pixel de distância)
 
         Args:
             distancia_tiles: distância desejada em tiles (aproximada)
             max_tentativas: máximo de tentativas para encontrar destino válido
 
         Returns:
-            (tela_x, tela_y, distancia_astar_px, path) ou None se não encontrar
-            - tela_x, tela_y: coordenadas na tela
+            (mundo_x, mundo_y, distancia_astar_px, path) ou None se não encontrar
+            - mundo_x, mundo_y: coordenadas do destino no mundo
             - distancia_astar_px: distância REAL do caminho A* em pixels
             - path: lista de pontos do caminho A*
         """
@@ -232,23 +232,12 @@ class CalibradorVelocidade:
                 offset_x = int(distancia_px * math.cos(angulo))
                 offset_y = int(distancia_px * math.sin(angulo))
 
-            # Coordenadas na tela
-            tela_x = self.centro_x + offset_x
-            tela_y = self.centro_y + offset_y
+            # Coordenadas no mundo
+            if self.player_x is None:
+                continue  # Sem GPS ainda
 
-            # Garantir que está dentro da tela
-            if tela_x < 100 or tela_x > 1500:
-                continue
-            if tela_y < 100 or tela_y > 800:
-                continue
-
-            # Converter para mundo
-            mundo_x, mundo_y = self.converter_tela_para_mundo(tela_x, tela_y)
-
-            if mundo_x is None:
-                # Sem GPS ainda, fallback para Manhattan
-                distancia_manhattan = abs(offset_x) + abs(offset_y)
-                return tela_x, tela_y, distancia_manhattan, None
+            mundo_x = int(self.player_x + offset_x)
+            mundo_y = int(self.player_y + offset_y)
 
             # Validar que destino é walkable
             if not self.validar_destino(mundo_x, mundo_y):
@@ -266,17 +255,17 @@ class CalibradorVelocidade:
                 if path is None:
                     continue
 
-                # Distância REAL = número de tiles no caminho A*
-                distancia_astar_tiles = len(path)
-                distancia_astar_px = distancia_astar_tiles * self.pixels_por_tile
+                # IMPORTANTE: A* retorna pontos em PIXELS (cada step = 1 pixel)
+                # len(path) = número de pixels do caminho
+                distancia_astar_px = len(path)
 
                 # Aceitar esse destino
-                return tela_x, tela_y, distancia_astar_px, path
+                return mundo_x, mundo_y, distancia_astar_px, path
 
             else:
                 # Fallback: sem A*, usar Manhattan
                 distancia_manhattan = abs(offset_x) + abs(offset_y)
-                return tela_x, tela_y, distancia_manhattan, None
+                return mundo_x, mundo_y, distancia_manhattan, None
 
         # Não encontrou destino válido
         return None
@@ -440,17 +429,7 @@ class CalibradorVelocidade:
 
                 for tentativa in range(3):
                     print(f"\n   📏 Distância {distancia_tiles} tiles - Tentativa {tentativa + 1}/3:")
-
-                    # Atualizar GPS antes de cada medição
-                    print("      📡 Atualizando posição GPS...")
-                    resultado_gps = self.gps.get_current_position(keep_map_open=True, verbose=False)
-
-                    if resultado_gps and 'x' in resultado_gps:
-                        self.player_x = resultado_gps['x']
-                        self.player_y = resultado_gps['y']
-                        print(f"      ✅ Posição atual: ({self.player_x}, {self.player_y})")
-                    else:
-                        print("      ⚠️ GPS falhou, usando posição anterior")
+                    print(f"      📍 Posição atual: ({self.player_x}, {self.player_y})")
 
                     # Gerar destino walkable válido
                     destino = self.encontrar_destino_valido(distancia_tiles)
@@ -459,11 +438,13 @@ class CalibradorVelocidade:
                         print(f"      ❌ Não encontrou destino válido")
                         continue
 
-                    # Desempacotar: encontrar_destino_valido retorna (tela_x, tela_y, distancia_px, path)
-                    destino_tela_x, destino_tela_y, distancia_estimada, path = destino
+                    # Desempacotar: encontrar_destino_valido retorna (mundo_x, mundo_y, distancia_px, path)
+                    destino_mundo_x, destino_mundo_y, distancia_estimada, path = destino
 
-                    # Converter tela → mundo para obter coordenadas mundo
-                    destino_mundo_x, destino_mundo_y = self.converter_tela_para_mundo(destino_tela_x, destino_tela_y)
+                    # Debug: mostrar distância calculada pelo A*
+                    tiles_astar = distancia_estimada / self.pixels_por_tile
+                    print(f"      🗺️ Destino mundo: ({destino_mundo_x}, {destino_mundo_y})")
+                    print(f"      📏 A* calculou: {distancia_estimada}px = {tiles_astar:.1f} tiles")
 
                     # CONVERTER MUNDO → TELA DO MAPA
                     mapa_x, mapa_y = self.mundo_para_tela_mapa(
@@ -471,7 +452,7 @@ class CalibradorVelocidade:
                         self.player_x, self.player_y
                     )
 
-                    print(f"      📍 Destino: mundo({destino_mundo_x:.0f}, {destino_mundo_y:.0f}) → mapa({mapa_x}, {mapa_y})")
+                    print(f"      📍 Clique no mapa: ({mapa_x}, {mapa_y})")
 
                     # CLICAR NO MAPA (linha verde vai aparecer)
                     print(f"      🎯 Clicando no mapa...")
@@ -479,11 +460,19 @@ class CalibradorVelocidade:
                         print("      ❌ Falha ao clicar")
                         continue
 
-                    time.sleep(0.5)  # Aguardar linha verde aparecer
+                    time.sleep(0.8)  # Aguardar linha verde aparecer
 
                     # DETECTAR LINHA VERDE NO MAPA (GROUND TRUTH!)
                     print(f"      🟢 Detectando linha verde no mapa...")
                     img_mapa = self.capturar_tela()
+
+                    # Salvar screenshot para debug
+                    try:
+                        cv2.imwrite(f'DEBUG_linha_verde_{distancia_tiles}tiles_t{tentativa+1}.png', img_mapa)
+                        print(f"      💾 Debug salvo: DEBUG_linha_verde_{distancia_tiles}tiles_t{tentativa+1}.png")
+                    except:
+                        pass
+
                     tiles_linha_verde = self.detectar_linha_verde_no_mapa(img_mapa)
 
                     if tiles_linha_verde is None or tiles_linha_verde == 0:
@@ -527,7 +516,39 @@ class CalibradorVelocidade:
                         duracao = tempo_fim - tempo_inicio
                         print(f"      ⚠️ Timeout - assumindo movimento completo em {duracao:.3f}s")
 
-                    # CALCULAR VELOCIDADE
+                    # GPS DE VERIFICAÇÃO: Confirmar que realmente andou
+                    print(f"      🔍 Verificando posição final com GPS...")
+                    resultado_final = self.gps.get_current_position(keep_map_open=True, verbose=False)
+
+                    if resultado_final and 'x' in resultado_final:
+                        pos_final_x = resultado_final['x']
+                        pos_final_y = resultado_final['y']
+
+                        # Calcular distância real andada
+                        delta_real_x = abs(pos_final_x - self.player_x)
+                        delta_real_y = abs(pos_final_y - self.player_y)
+                        distancia_real_andada = delta_real_x + delta_real_y  # Manhattan
+
+                        tiles_reais = distancia_real_andada / self.pixels_por_tile
+
+                        print(f"      📍 Posição inicial: ({self.player_x}, {self.player_y})")
+                        print(f"      📍 Posição final: ({pos_final_x}, {pos_final_y})")
+                        print(f"      📏 Distância REAL andada: {distancia_real_andada}px = {tiles_reais:.1f} tiles")
+
+                        # Comparar com esperado
+                        diferenca = abs(tiles_reais - tiles_linha_verde)
+                        if diferenca > 1.0:
+                            print(f"      ⚠️ ATENÇÃO: Diferença de {diferenca:.1f} tiles! (esperado: {tiles_linha_verde})")
+                        else:
+                            print(f"      ✅ Distância confere! (esperado: {tiles_linha_verde}, real: {tiles_reais:.1f})")
+
+                        # Atualizar posição para próxima iteração
+                        self.player_x = pos_final_x
+                        self.player_y = pos_final_y
+                    else:
+                        print(f"      ⚠️ GPS de verificação falhou")
+
+                    # CALCULAR VELOCIDADE usando distância da linha verde (ground truth)
                     velocidade = distancia_real_px / duracao if duracao > 0 else 0
 
                     medicoes_distancia.append({
@@ -537,7 +558,7 @@ class CalibradorVelocidade:
                         'velocidade': velocidade
                     })
 
-                    print(f"      🏃 Velocidade: {velocidade:.1f} px/s")
+                    print(f"      🏃 Velocidade medida: {velocidade:.1f} px/s")
 
                     # Delay entre medições
                     time.sleep(1.5)
