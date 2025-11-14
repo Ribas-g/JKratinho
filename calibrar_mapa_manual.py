@@ -156,41 +156,12 @@ class CalibradorManual:
         print(f"   👆 Clicando...")
         self.executar_tap(mapa_x, mapa_y)
 
-        # IMEDIATAMENTE começar a detectar linha verde (polling rápido!)
-        tempo_inicio = None
-        timeout = time.time() + 2.0
+        # USAR TEMPO DO CLICK como início (linha verde aparece instantaneamente!)
+        tempo_inicio = tempo_click
+        print(f"   ⚡ Usando tempo do click como início (linha verde é instantânea)")
 
-        print(f"   🟢 Detectando início do movimento...")
-        while time.time() < timeout:
-            img = self.capturar_tela()
-            if self.detectar_linha_verde(img):
-                tempo_inicio = time.time()
-                delay_inicio = tempo_inicio - tempo_click
-
-                # SALVAR SCREENSHOT DO INÍCIO (linha verde detectada!)
-                timestamp = time.strftime('%H%M%S')
-                filename_inicio = f'DEBUG_INICIO_{tiles}tiles_{direcao}_{timestamp}.png'
-
-                # Adicionar texto na imagem para debug
-                img_debug = img.copy()
-                cv2.putText(img_debug, f'INICIO - {tiles} tiles {direcao}', (50, 50),
-                           cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-                cv2.putText(img_debug, f'Delay: {delay_inicio:.3f}s', (50, 100),
-                           cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-                cv2.putText(img_debug, f'Tempo: {timestamp}', (50, 150),
-                           cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-
-                cv2.imwrite(filename_inicio, img_debug)
-
-                print(f"   ✅ Movimento iniciou ({delay_inicio:.3f}s após click)")
-                print(f"   📸 Screenshot início: {filename_inicio}")
-                break
-            time.sleep(0.01)  # 10ms polling = 100 FPS!
-
-        if tempo_inicio is None:
-            # Movimento muito rápido, usar tempo do click
-            tempo_inicio = tempo_click
-            print(f"   ⚡ Movimento muito rápido! Usando tempo do click")
+        # Pequeno delay para garantir que movimento iniciou
+        time.sleep(0.1)
 
         # Aguardar linha verde sumir (fim do movimento)
         tempo_fim = None
