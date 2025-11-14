@@ -1,149 +1,64 @@
 {
-  "velocidade_px_s": 330.2984856700612,
-  "tempo_por_tile": 0.09688206694342871,
+  "velocidade_px_s": 124.38126094907237,
+  "tempo_por_tile": 0.2656217559935555,
   "pixels_por_tile": 32,
-  "metodo_calibracao": "mapa_aberto_ground_truth",
-  "medicoes_detalhadas": [
+  "fator_escala": 20.0,
+  "metodo": "calibracao_manual",
+  "medicoes": [
     {
-      "distancia_tiles": 1,
-      "tiles_ground_truth_medio": 0.3333333333333333,
-      "distancia_media_px": 10.666666666666666,
-      "tempo_medio": 0.28391488393147785,
-      "velocidade_px_s": 37.56994532643466,
-      "medicoes_individuais": [
-        {
-          "duracao": 0.2802913188934326,
-          "distancia_px": 32,
-          "tiles_ground_truth": 1,
-          "velocidade": 114.16693219873311
-        },
-        {
-          "duracao": 0.2851989269256592,
-          "distancia_px": 0,
-          "tiles_ground_truth": 0,
-          "velocidade": 0.0
-        },
-        {
-          "duracao": 0.2862544059753418,
-          "distancia_px": 0,
-          "tiles_ground_truth": 0,
-          "velocidade": 0.0
-        }
-      ]
+      "direcao": "esquerda",
+      "tiles_solicitados": 6,
+      "tiles_reais": 6,
+      "distancia_px": 192,
+      "duracao": 1.777928352355957,
+      "velocidade_px_s": 107.99085336907879,
+      "tempo_por_tile": 0.29632139205932617
     },
     {
-      "distancia_tiles": 2,
-      "tiles_ground_truth_medio": 2.0,
-      "distancia_media_px": 64.0,
-      "tempo_medio": 0.2728861967722575,
-      "velocidade_px_s": 234.53000099309693,
-      "medicoes_individuais": [
-        {
-          "duracao": 0.26079773902893066,
-          "distancia_px": 64,
-          "tiles_ground_truth": 2,
-          "velocidade": 245.40090047674988
-        },
-        {
-          "duracao": 0.2793877124786377,
-          "distancia_px": 64,
-          "tiles_ground_truth": 2,
-          "velocidade": 229.07235050608574
-        },
-        {
-          "duracao": 0.2784731388092041,
-          "distancia_px": 64,
-          "tiles_ground_truth": 2,
-          "velocidade": 229.82467994462334
-        }
-      ]
+      "direcao": "baixo",
+      "tiles_solicitados": 10,
+      "tiles_reais": 10,
+      "distancia_px": 320,
+      "duracao": 3.029306650161743,
+      "velocidade_px_s": 105.63473327565379,
+      "tempo_por_tile": 0.3029306650161743
     },
     {
-      "distancia_tiles": 3,
-      "tiles_ground_truth_medio": 3.0,
-      "distancia_media_px": 96.0,
-      "tempo_medio": 0.2828514575958252,
-      "velocidade_px_s": 339.40076114855043,
-      "medicoes_individuais": [
-        {
-          "duracao": 0.28340721130371094,
-          "distancia_px": 96,
-          "tiles_ground_truth": 3,
-          "velocidade": 338.7352056371015
-        },
-        {
-          "duracao": 0.2824594974517822,
-          "distancia_px": 96,
-          "tiles_ground_truth": 3,
-          "velocidade": 339.8717368899513
-        },
-        {
-          "duracao": 0.2826876640319824,
-          "distancia_px": 96,
-          "tiles_ground_truth": 3,
-          "velocidade": 339.597415149813
-        }
-      ]
+      "direcao": "direita",
+      "tiles_solicitados": 2,
+      "tiles_reais": 2,
+      "distancia_px": 64,
+      "duracao": 0.36238694190979004,
+      "velocidade_px_s": 176.60680504302414,
+      "tempo_por_tile": 0.18119347095489502
     },
     {
-      "distancia_tiles": 4,
-      "tiles_ground_truth_medio": 4.0,
-      "distancia_media_px": 128.0,
-      "tempo_medio": 0.29012521107991535,
-      "velocidade_px_s": 441.1888216248199,
-      "medicoes_individuais": [
-        {
-          "duracao": 0.28916287422180176,
-          "distancia_px": 128,
-          "tiles_ground_truth": 4,
-          "velocidade": 442.6571023146556
-        },
-        {
-          "duracao": 0.28034329414367676,
-          "distancia_px": 128,
-          "tiles_ground_truth": 4,
-          "velocidade": 456.5830632438799
-        },
-        {
-          "duracao": 0.3008694648742676,
-          "distancia_px": 128,
-          "tiles_ground_truth": 4,
-          "velocidade": 425.4336678981059
-        }
-      ]
+      "direcao": "esquerda",
+      "tiles_solicitados": 3,
+      "tiles_reais": 3,
+      "distancia_px": 96,
+      "duracao": 0.733881950378418,
+      "velocidade_px_s": 130.81122917725213,
+      "tempo_por_tile": 0.24462731679280597
     },
     {
-      "distancia_tiles": 5,
-      "tiles_ground_truth_medio": 5.333333333333333,
-      "distancia_media_px": 170.66666666666666,
-      "tempo_medio": 0.2911592324574788,
-      "velocidade_px_s": 586.1626479304275,
-      "medicoes_individuais": [
-        {
-          "duracao": 0.2910628318786621,
-          "distancia_px": 160,
-          "tiles_ground_truth": 5,
-          "velocidade": 549.7094870110402
-        },
-        {
-          "duracao": 0.29326868057250977,
-          "distancia_px": 160,
-          "tiles_ground_truth": 5,
-          "velocidade": 545.5747940341024
-        },
-        {
-          "duracao": 0.28914618492126465,
-          "distancia_px": 192,
-          "tiles_ground_truth": 6,
-          "velocidade": 664.0239782250012
-        }
-      ]
+      "direcao": "esquerda",
+      "tiles_solicitados": 7,
+      "tiles_reais": 7,
+      "distancia_px": 224,
+      "duracao": 1.9385197162628174,
+      "velocidade_px_s": 115.55208756495871,
+      "tempo_por_tile": 0.27693138803754536
+    },
+    {
+      "direcao": "esquerda",
+      "tiles_solicitados": 10,
+      "tiles_reais": 10,
+      "distancia_px": 320,
+      "duracao": 2.9172630310058594,
+      "velocidade_px_s": 109.69185726446662,
+      "tempo_por_tile": 0.29172630310058595
     }
   ],
-  "data_calibracao": "2025-11-14 13:56:22",
-  "posicao_inicial": {
-    "x": 374,
-    "y": 1153,
-    "zone": "Vila Inicial"
-  }
+  "data": "2025-11-14 14:32:05"
 }
