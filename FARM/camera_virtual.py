@@ -71,6 +71,13 @@ class CameraVirtual:
         # Histórico de erros (para debug)
         self.historico_erros = []
 
+        # Imprimir informações de inicialização
+        print("🎥 Câmera Virtual inicializada!")
+        print(f"   Tela do jogo: {self.tela_largura}x{self.tela_altura}px")
+        print(f"   Escala mapa: {self.escala_x:.1f}x{self.escala_y:.1f}")
+        print(f"   FOV (mapa mundo): {self.fov_largura_mapa:.1f}x{self.fov_altura_mapa:.1f}px")
+        print(f"   GPS a cada {self.max_movimentos_sem_gps} movimentos")
+
     def _carregar_escala_mapa(self):
         """
         Carrega escala do mapa (igual ao navegador)
@@ -92,12 +99,6 @@ class CameraVirtual:
             print("   Usando escala padrão: 5.0 (GPS 0.2x)")
             self.escala_x = 5.0
             self.escala_y = 5.0
-
-        print("🎥 Câmera Virtual inicializada!")
-        print(f"   Tela do jogo: {self.tela_largura}x{self.tela_altura}px")
-        print(f"   Escala mapa: {self.escala_x:.1f}x{self.escala_y:.1f}")
-        print(f"   FOV (mapa mundo): {self.fov_largura_mapa:.1f}x{self.fov_altura_mapa:.1f}px")
-        print(f"   GPS a cada {self.max_movimentos_sem_gps} movimentos")
 
     def inicializar_posicao(self):
         """
