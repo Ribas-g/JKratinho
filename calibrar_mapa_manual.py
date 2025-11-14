@@ -287,6 +287,26 @@ class CalibradorManual:
                     print(f"\n   📊 MÉDIAS:")
                     print(f"      🏃 Velocidade média: {vel_media:.1f} px/s")
                     print(f"      ⏱️ Tempo médio por tile: {tempo_medio:.3f}s")
+
+                    # REGRESSÃO LINEAR: distância vs tempo
+                    # Isso elimina o overhead fixo!
+                    if len(medicoes) >= 3:
+                        import numpy as np
+
+                        distancias = np.array([m['distancia_px'] for m in medicoes])
+                        tempos = np.array([m['duracao'] for m in medicoes])
+
+                        # Regressão linear: tempo = a * distancia + b
+                        # a = 1/velocidade, b = overhead
+                        coef = np.polyfit(distancias, tempos, 1)
+                        velocidade_real = 1.0 / coef[0]
+                        overhead = coef[1]
+
+                        print(f"\n   📈 REGRESSÃO LINEAR (elimina overhead!):")
+                        print(f"      🏃 Velocidade REAL: {velocidade_real:.1f} px/s")
+                        print(f"      ⏱️ Tempo/tile REAL: {32.0/velocidade_real:.3f}s")
+                        print(f"      ⚠️ Overhead fixo: {overhead:.3f}s")
+
                     continue
 
                 # Salvar resultados
@@ -301,12 +321,33 @@ class CalibradorManual:
                     vel_media = sum(m['velocidade_px_s'] for m in medicoes) / len(medicoes)
                     tempo_medio = sum(m['tempo_por_tile'] for m in medicoes) / len(medicoes)
 
+                    # REGRESSÃO LINEAR para velocidade real
+                    velocidade_real = vel_media
+                    overhead = 0.0
+                    tempo_real = tempo_medio
+
+                    if len(medicoes) >= 3:
+                        import numpy as np
+
+                        distancias = np.array([m['distancia_px'] for m in medicoes])
+                        tempos = np.array([m['duracao'] for m in medicoes])
+
+                        # Regressão linear
+                        coef = np.polyfit(distancias, tempos, 1)
+                        velocidade_real = 1.0 / coef[0]
+                        overhead = coef[1]
+                        tempo_real = self.pixels_por_tile / velocidade_real
+
+                        print(f"\n   📈 Regressão linear aplicada:")
+                        print(f"      Overhead eliminado: {overhead:.3f}s")
+
                     resultado = {
-                        'velocidade_px_s': vel_media,
-                        'tempo_por_tile': tempo_medio,
+                        'velocidade_px_s': velocidade_real,
+                        'tempo_por_tile': tempo_real,
                         'pixels_por_tile': self.pixels_por_tile,
                         'fator_escala': self.fator_escala,
-                        'metodo': 'calibracao_manual',
+                        'overhead_fixo': overhead,
+                        'metodo': 'calibracao_manual_regressao_linear',
                         'medicoes': medicoes,
                         'data': time.strftime('%Y-%m-%d %H:%M:%S')
                     }
@@ -316,8 +357,8 @@ class CalibradorManual:
                         json.dump(resultado, f, indent=2, ensure_ascii=False)
 
                     print(f"\n   ✅ Resultados salvos: {filename}")
-                    print(f"   🏃 Velocidade: {vel_media:.1f} px/s")
-                    print(f"   ⏱️ Tempo/tile: {tempo_medio:.3f}s")
+                    print(f"   🏃 Velocidade REAL: {velocidade_real:.1f} px/s")
+                    print(f"   ⏱️ Tempo/tile REAL: {tempo_real:.3f}s")
                     continue
 
                 # Ajustar fator de escala
