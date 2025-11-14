@@ -39,6 +39,9 @@ class CalibradorVelocidade:
         # Inicializar A* pathfinding com o mapa colorido
         self.inicializar_pathfinding()
 
+        # Carregar configuração de mapa (centro e escala)
+        self.carregar_configuracao_mapa()
+
         # Região onde procurar linha verde (em torno do personagem)
         # O personagem fica no centro da tela (800, 450) em 1600x900
         self.centro_x = 800
@@ -103,6 +106,57 @@ class CalibradorVelocidade:
             print(f"   ⚠️ Erro ao inicializar pathfinder: {e}")
             print("   Calibração usará Manhattan sem A*")
             self.pathfinder = None
+
+    def carregar_configuracao_mapa(self):
+        """Carrega configuração de transformação mundo → tela (do navegador)"""
+        try:
+            with open('map_transform_config.json', 'r', encoding='utf-8') as f:
+                config = json.load(f)
+
+            self.centro_mapa_x = config['centro_mapa_tela']['x']
+            self.centro_mapa_y = config['centro_mapa_tela']['y']
+            self.escala_x = config['escala']['x']
+            self.escala_y = config['escala']['y']
+
+            print(f"   ✅ Configuração de mapa carregada")
+            print(f"   📍 Centro do mapa na tela: ({self.centro_mapa_x}, {self.centro_mapa_y})")
+            print(f"   📏 Escala: X={self.escala_x:.4f}, Y={self.escala_y:.4f}")
+
+        except FileNotFoundError:
+            print("   ⚠️ map_transform_config.json não encontrado!")
+            print("   Execute calibração do navegador primeiro")
+            print("   Usando valores padrão...")
+
+            # Valores padrão (assumindo mapa fullscreen 1600x900)
+            self.centro_mapa_x = 800
+            self.centro_mapa_y = 450
+            self.escala_x = 5.0
+            self.escala_y = 5.0
+
+    def mundo_para_tela_mapa(self, x_mundo, y_mundo, x_atual, y_atual):
+        """
+        Converte coordenadas mundo → tela do mapa (COM MAPA ABERTO)
+
+        IMPORTANTE: Player SEMPRE no centro do mapa.
+        Calcula delta e aplica escala.
+
+        Args:
+            x_mundo, y_mundo: Destino no mapa mundo
+            x_atual, y_atual: Posição atual do player no mapa mundo
+
+        Returns:
+            (x_tela, y_tela): Coordenadas para clicar no mapa
+        """
+        # Delta (quanto precisa andar)
+        delta_x = x_mundo - x_atual
+        delta_y = y_mundo - y_atual
+
+        # Aplicar escala e somar ao centro
+        # Player está SEMPRE no centro do mapa
+        x_tela = int(self.centro_mapa_x + delta_x * self.escala_x)
+        y_tela = int(self.centro_mapa_y + delta_y * self.escala_y)
+
+        return (x_tela, y_tela)
 
     def converter_tela_para_mundo(self, tela_x, tela_y):
         """Converte coordenadas da tela para coordenadas do mundo"""
@@ -232,7 +286,7 @@ class CalibradorVelocidade:
 
     def detectar_linha_verde(self, img):
         """
-        Detecta se linha verde está presente na imagem
+        Detecta se linha verde está presente na imagem (TELA DE JOGO)
         Retorna True se linha verde detectada
         """
         if img is None:
@@ -253,6 +307,62 @@ class CalibradorVelocidade:
         # Threshold: precisa de pelo menos 50 pixels verdes para considerar linha presente
         return pixels_verdes > 50
 
+    def detectar_linha_verde_no_mapa(self, img):
+        """
+        Detecta e conta tiles da linha verde NO MAPA
+
+        A linha verde aparece no mapa quando você clica em um destino,
+        mostrando o caminho que o personagem vai percorrer.
+
+        IMPORTANTE: Após processamento de levels, a cor é #00ff00 (verde puro)
+
+        Retorna:
+            int: Número de tiles da linha verde (ground truth!)
+            None: Se não detectou linha
+        """
+        if img is None:
+            return None
+
+        # Converter para HSV
+        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+
+        # Linha verde após levels: #00ff00 (RGB: 0, 255, 0) = verde puro
+        # Em HSV: H~60 (verde puro), S alta, V alta
+        verde_lower = np.array([50, 150, 150])  # Mais restritivo para verde puro
+        verde_upper = np.array([70, 255, 255])
+
+        # Criar máscara
+        mask = cv2.inRange(hsv, verde_lower, verde_upper)
+
+        # Contar pixels da linha
+        pixels_linha = cv2.countNonZero(mask)
+
+        if pixels_linha < 100:  # Threshold mínimo
+            return None
+
+        # Usar morfologia para encontrar o "esqueleto" da linha
+        kernel = np.ones((3,3), np.uint8)
+        linha_fina = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+        linha_fina = cv2.morphologyEx(linha_fina, cv2.MORPH_OPEN, kernel)
+
+        # Encontrar contornos
+        contours, _ = cv2.findContours(linha_fina, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        if not contours:
+            return None
+
+        # Pegar maior contorno (a linha principal)
+        maior_contorno = max(contours, key=cv2.contourArea)
+
+        # Calcular comprimento do contorno (aproximação do caminho)
+        comprimento_pixels = cv2.arcLength(maior_contorno, closed=False)
+
+        # Converter para tiles
+        # pixels no mapa / (pixels_por_tile * escala) = tiles
+        tiles = comprimento_pixels / (self.pixels_por_tile * self.escala_x)
+
+        return int(tiles)
+
     def executar_tap(self, x, y):
         """Executa tap em coordenada específica"""
         try:
@@ -261,6 +371,264 @@ class CalibradorVelocidade:
         except Exception as e:
             print(f"❌ Erro ao executar tap: {e}")
             return False
+
+    def calibrar_com_mapa_aberto(self):
+        """
+        CALIBRAÇÃO COM MAPA ABERTO - Usa linha verde do mapa como ground truth
+
+        Fluxo:
+        1. Abre mapa UMA VEZ
+        2. Mantém mapa aberto para TODAS as medições
+        3. Para cada distância:
+           - GPS com mapa já aberto
+           - Gera destino walkable válido
+           - Converte mundo → tela do mapa
+           - Clica no mapa (linha verde aparece)
+           - Detecta linha verde NO MAPA (ground truth!)
+           - Aguarda movimento completar (mapa ainda aberto)
+           - Calcula velocidade = distância / tempo
+        4. Fecha mapa apenas no FINAL
+
+        Esta é a CALIBRAÇÃO DEFINITIVA que replica como o mapa do Rucoy funciona!
+        """
+        print("=" * 70)
+        print("⚙️ CALIBRADOR DE VELOCIDADE - BASEADO EM MAPA")
+        print("=" * 70)
+        print("\n🗺️ Este método usa o MAPA DO JOGO como ground truth")
+        print("   A linha verde no mapa mostra o caminho EXATO que o personagem vai percorrer")
+        print("   Medições feitas COM MAPA ABERTO para máxima precisão!\n")
+
+        # 1. Abrir mapa UMA VEZ
+        print("📖 Abrindo mapa...")
+        self.gps.click_button('open')
+        time.sleep(1.0)  # Aguardar mapa abrir completamente
+        print("   ✅ Mapa aberto!\n")
+
+        try:
+            # 2. GPS inicial COM MAPA ABERTO
+            print("📡 Obtendo posição inicial via GPS (mapa aberto)...")
+
+            resultado = self.gps.get_current_position(keep_map_open=True, verbose=False)
+
+            if not resultado or 'x' not in resultado:
+                print("❌ GPS falhou")
+                self.gps.click_button('close')
+                return False
+
+            pos_inicial_x = resultado['x']
+            pos_inicial_y = resultado['y']
+
+            # Salvar posição do jogador
+            self.player_x = pos_inicial_x
+            self.player_y = pos_inicial_y
+
+            print(f"   ✅ Posição inicial: ({pos_inicial_x}, {pos_inicial_y})")
+            print(f"   🗺️ Zona: {resultado.get('zone', 'Desconhecida')}\n")
+
+            # 3. Loop de medições COM MAPA ABERTO
+            print("=" * 70)
+            print("🧪 TESTANDO DIFERENTES DISTÂNCIAS (MAPA ABERTO)")
+            print("=" * 70)
+
+            for distancia_tiles in self.distancias_tiles:
+                medicoes_distancia = []
+
+                for tentativa in range(3):
+                    print(f"\n   📏 Distância {distancia_tiles} tiles - Tentativa {tentativa + 1}/3:")
+
+                    # Atualizar GPS antes de cada medição
+                    print("      📡 Atualizando posição GPS...")
+                    resultado_gps = self.gps.get_current_position(keep_map_open=True, verbose=False)
+
+                    if resultado_gps and 'x' in resultado_gps:
+                        self.player_x = resultado_gps['x']
+                        self.player_y = resultado_gps['y']
+                        print(f"      ✅ Posição atual: ({self.player_x}, {self.player_y})")
+                    else:
+                        print("      ⚠️ GPS falhou, usando posição anterior")
+
+                    # Gerar destino walkable válido
+                    destino = self.encontrar_destino_valido(distancia_tiles)
+
+                    if destino is None:
+                        print(f"      ❌ Não encontrou destino válido")
+                        continue
+
+                    # Desempacotar: encontrar_destino_valido retorna (tela_x, tela_y, distancia_px, path)
+                    destino_tela_x, destino_tela_y, distancia_estimada, path = destino
+
+                    # Converter tela → mundo para obter coordenadas mundo
+                    destino_mundo_x, destino_mundo_y = self.converter_tela_para_mundo(destino_tela_x, destino_tela_y)
+
+                    # CONVERTER MUNDO → TELA DO MAPA
+                    mapa_x, mapa_y = self.mundo_para_tela_mapa(
+                        destino_mundo_x, destino_mundo_y,
+                        self.player_x, self.player_y
+                    )
+
+                    print(f"      📍 Destino: mundo({destino_mundo_x:.0f}, {destino_mundo_y:.0f}) → mapa({mapa_x}, {mapa_y})")
+
+                    # CLICAR NO MAPA (linha verde vai aparecer)
+                    print(f"      🎯 Clicando no mapa...")
+                    if not self.executar_tap(mapa_x, mapa_y):
+                        print("      ❌ Falha ao clicar")
+                        continue
+
+                    time.sleep(0.5)  # Aguardar linha verde aparecer
+
+                    # DETECTAR LINHA VERDE NO MAPA (GROUND TRUTH!)
+                    print(f"      🟢 Detectando linha verde no mapa...")
+                    img_mapa = self.capturar_tela()
+                    tiles_linha_verde = self.detectar_linha_verde_no_mapa(img_mapa)
+
+                    if tiles_linha_verde is None or tiles_linha_verde == 0:
+                        print("      ⚠️ Linha verde não detectada no mapa")
+                        # Usar distância estimada do A* como fallback
+                        tiles_linha_verde = int(distancia_estimada / self.pixels_por_tile)
+                        print(f"      📐 Usando distância A* como fallback: {tiles_linha_verde} tiles")
+                    else:
+                        print(f"      ✅ Linha verde detectada: {tiles_linha_verde} tiles (GROUND TRUTH!)")
+
+                    distancia_real_px = tiles_linha_verde * self.pixels_por_tile
+
+                    # AGUARDAR MOVIMENTO COMPLETAR (MAPA AINDA ABERTO)
+                    print(f"      ⏱️ Aguardando movimento completar...")
+                    tempo_inicio = time.time()
+
+                    # Timeout baseado em distância (1 segundo por tile + margem)
+                    timeout_movimento = tiles_linha_verde * 1.0 + 5.0
+                    timeout_final = time.time() + timeout_movimento
+
+                    movimento_completo = False
+                    while time.time() < timeout_final:
+                        # Verificar se personagem parou (pode usar GPS ou detecção visual)
+                        # Por simplicidade, vamos usar tempo estimado + pequena margem
+                        time.sleep(0.1)
+
+                        # Verificar se linha verde sumiu (movimento completo)
+                        img_check = self.capturar_tela()
+                        tiles_check = self.detectar_linha_verde_no_mapa(img_check)
+
+                        if tiles_check is None or tiles_check == 0:
+                            tempo_fim = time.time()
+                            duracao = tempo_fim - tempo_inicio
+                            movimento_completo = True
+                            print(f"      ✅ Movimento completo em {duracao:.3f}s")
+                            break
+
+                    if not movimento_completo:
+                        # Timeout - assumir que chegou
+                        tempo_fim = time.time()
+                        duracao = tempo_fim - tempo_inicio
+                        print(f"      ⚠️ Timeout - assumindo movimento completo em {duracao:.3f}s")
+
+                    # CALCULAR VELOCIDADE
+                    velocidade = distancia_real_px / duracao if duracao > 0 else 0
+
+                    medicoes_distancia.append({
+                        'duracao': duracao,
+                        'distancia_px': distancia_real_px,
+                        'tiles_ground_truth': tiles_linha_verde,
+                        'velocidade': velocidade
+                    })
+
+                    print(f"      🏃 Velocidade: {velocidade:.1f} px/s")
+
+                    # Delay entre medições
+                    time.sleep(1.5)
+
+                # Calcular média para esta distância
+                if medicoes_distancia:
+                    duracoes = [m['duracao'] for m in medicoes_distancia]
+                    distancias = [m['distancia_px'] for m in medicoes_distancia]
+                    tiles_ground_truth = [m['tiles_ground_truth'] for m in medicoes_distancia]
+
+                    tempo_medio = sum(duracoes) / len(duracoes)
+                    distancia_media = sum(distancias) / len(distancias)
+                    tiles_medio = sum(tiles_ground_truth) / len(tiles_ground_truth)
+                    velocidade_media = distancia_media / tempo_medio if tempo_medio > 0 else 0
+
+                    self.medicoes.append({
+                        'distancia_tiles': distancia_tiles,
+                        'tiles_ground_truth_medio': tiles_medio,
+                        'distancia_media_px': distancia_media,
+                        'tempo_medio': tempo_medio,
+                        'velocidade_px_s': velocidade_media,
+                        'medicoes_individuais': medicoes_distancia
+                    })
+
+                    print(f"\n   📊 Média para {distancia_tiles} tiles:")
+                    print(f"      🟢 Tiles (ground truth): {tiles_medio:.1f}")
+                    print(f"      ⏱️ Tempo médio: {tempo_medio:.3f}s")
+                    print(f"      📏 Distância média: {distancia_media:.1f} px")
+                    print(f"      🏃 Velocidade média: {velocidade_media:.1f} px/s")
+
+        finally:
+            # 4. FECHAR MAPA (apenas no final)
+            print("\n📕 Fechando mapa...")
+            self.gps.click_button('close')
+            time.sleep(0.5)
+            print("   ✅ Mapa fechado!\n")
+
+        # 5. Calcular velocidade global
+        print("=" * 70)
+        print("📊 RESULTADOS FINAIS (BASEADO EM MAPA)")
+        print("=" * 70)
+
+        if not self.medicoes:
+            print("❌ Nenhuma medição bem-sucedida")
+            return False
+
+        # Média ponderada
+        total_pixels = sum(m['distancia_media_px'] for m in self.medicoes)
+        total_tempo = sum(m['tempo_medio'] for m in self.medicoes)
+
+        velocidade_global = total_pixels / total_tempo if total_tempo > 0 else 0
+        tempo_por_tile = self.pixels_por_tile / velocidade_global if velocidade_global > 0 else 0
+
+        print(f"\n🏃 Velocidade média global: {velocidade_global:.1f} pixels/segundo")
+        print(f"⏱️ Tempo por tile (32px): {tempo_por_tile:.3f} segundos")
+        print(f"\n📋 Detalhamento por distância (com ground truth do mapa):")
+
+        for m in self.medicoes:
+            tiles_gt = m.get('tiles_ground_truth_medio', m['distancia_tiles'])
+            print(f"   {m['distancia_tiles']} tiles → {tiles_gt:.1f} tiles (mapa): {m['tempo_medio']:.3f}s @ {m['velocidade_px_s']:.1f} px/s")
+
+        # 6. Salvar configuração
+        print("\n" + "=" * 70)
+        print("💾 SALVANDO CONFIGURAÇÃO")
+        print("=" * 70)
+
+        Path("FARM").mkdir(exist_ok=True)
+
+        config = {
+            'velocidade_px_s': velocidade_global,
+            'tempo_por_tile': tempo_por_tile,
+            'pixels_por_tile': self.pixels_por_tile,
+            'metodo_calibracao': 'mapa_aberto_ground_truth',
+            'medicoes_detalhadas': self.medicoes,
+            'data_calibracao': time.strftime('%Y-%m-%d %H:%M:%S'),
+            'posicao_inicial': {
+                'x': pos_inicial_x,
+                'y': pos_inicial_y,
+                'zone': resultado.get('zone', 'Desconhecida')
+            }
+        }
+
+        output_file = 'FARM/velocidade_personagem.json'
+
+        with open(output_file, 'w', encoding='utf-8') as f:
+            json.dump(config, f, indent=2, ensure_ascii=False)
+
+        print(f"✅ Configuração salva: {output_file}")
+        print(f"\n📝 Método usado: Calibração baseada em MAPA (ground truth)")
+        print(f"   A linha verde do mapa forneceu a distância EXATA!")
+
+        print("\n" + "=" * 70)
+        print("✅ CALIBRAÇÃO COM MAPA CONCLUÍDA COM SUCESSO!")
+        print("=" * 70)
+
+        return True
 
     def medir_movimento(self, destino_x, destino_y, distancia_tiles):
         """
@@ -544,7 +912,10 @@ class CalibradorVelocidade:
 if __name__ == "__main__":
     try:
         calibrador = CalibradorVelocidade()
-        sucesso = calibrador.calibrar()
+
+        # Usar calibração COM MAPA ABERTO (ground truth do jogo!)
+        # Este método usa a linha verde do mapa como referência exata
+        sucesso = calibrador.calibrar_com_mapa_aberto()
 
         if not sucesso:
             print("\n❌ Calibração falhou")

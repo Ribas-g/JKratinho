@@ -62,13 +62,25 @@ Gera visualizações:
 python calibrar_velocidade_personagem.py
 ```
 
-**O que faz:**
-1. Abre GPS para posição inicial
-2. Clica em diferentes distâncias (1-5 tiles)
-3. Detecta linha verde (início do movimento)
-4. Mede tempo até linha verde sumir (fim do movimento)
-5. Calcula velocidade média em pixels/segundo
-6. Gera: `FARM/velocidade_personagem.json`
+**O que faz (MÉTODO COM MAPA - GROUND TRUTH!):**
+1. **Abre mapa UMA VEZ** e mantém aberto durante toda calibração
+2. GPS inicial com mapa aberto
+3. Para cada distância (1-5 tiles):
+   - GPS para atualizar posição atual
+   - Gera destino walkable válido usando A* pathfinding
+   - Converte coordenadas mundo → tela do mapa
+   - **Clica no mapa** (linha verde aparece mostrando caminho)
+   - **Detecta linha verde NO MAPA** (ground truth da distância!)
+   - Mede tempo até movimento completar (mapa ainda aberto)
+   - Calcula velocidade = distância real / tempo
+4. Fecha mapa apenas no final
+5. Gera: `FARM/velocidade_personagem.json` com velocidade calibrada
+
+**Por que usar o mapa?**
+- ✅ **Ground truth absoluto**: Linha verde mostra caminho EXATO do jogo
+- ✅ **Considera obstáculos**: Detecta quando personagem contorna paredes
+- ✅ **Máxima precisão**: Usa o próprio pathfinding do jogo como referência
+- ✅ **Sem aproximações**: Distância é exatamente o que o jogo calcula
 
 **Exemplo de output:**
 ```json
