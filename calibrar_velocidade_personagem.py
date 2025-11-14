@@ -20,9 +20,10 @@ import sys
 import random
 import math
 
-# Importar GPS
+# Importar GPS e A*
 sys.path.append('.')
 from gps_ncc_realtime import GPSRealtimeNCC
+from pathfinding_astar import AStarPathfinder
 
 
 class CalibradorVelocidade:
@@ -34,6 +35,9 @@ class CalibradorVelocidade:
 
         # Carregar matriz walkable para validar destinos
         self.carregar_matriz_walkable()
+
+        # Inicializar A* pathfinding com o mapa colorido
+        self.inicializar_pathfinding()
 
         # Região onde procurar linha verde (em torno do personagem)
         # O personagem fica no centro da tela (800, 450) em 1600x900
@@ -77,6 +81,29 @@ class CalibradorVelocidade:
             print("   Calibração continuará sem validação de destinos")
             self.matriz_walkable = None
 
+    def inicializar_pathfinding(self):
+        """Inicializa A* pathfinding para calcular distâncias reais"""
+        try:
+            import cv2
+            # Carregar mapa colorido (mesmo usado pelo GPS)
+            mapa_colorido = cv2.imread('MINIMAPA CERTOPRETO.png')
+
+            if mapa_colorido is None:
+                print("   ⚠️ MINIMAPA CERTOPRETO.png não encontrado!")
+                print("   Calibração usará Manhattan sem A*")
+                self.pathfinder = None
+                return
+
+            # Criar pathfinder A* (sem margem de segurança para calibração)
+            print("   🗺️ Inicializando A* pathfinder...")
+            self.pathfinder = AStarPathfinder(mapa_colorido, wall_margin=0)
+            print("   ✅ A* pathfinder pronto!")
+
+        except Exception as e:
+            print(f"   ⚠️ Erro ao inicializar pathfinder: {e}")
+            print("   Calibração usará Manhattan sem A*")
+            self.pathfinder = None
+
     def converter_tela_para_mundo(self, tela_x, tela_y):
         """Converte coordenadas da tela para coordenadas do mundo"""
         if self.player_x is None or self.player_y is None:
@@ -106,19 +133,20 @@ class CalibradorVelocidade:
 
     def encontrar_destino_valido(self, distancia_tiles, max_tentativas=50):
         """
-        Encontra um destino válido (walkable) a uma certa distância
+        Encontra um destino válido usando A* pathfinding
 
-        IMPORTANTE: Usa distância MANHATTAN (grid-based) porque personagem
-        não anda em diagonal direta (movimento tipo torre de xadrez)
+        IMPORTANTE: Usa A* para calcular caminho REAL contornando paredes.
+        Não usa Manhattan simples porque pode haver obstáculos no caminho.
 
         Args:
-            distancia_tiles: distância desejada em tiles
+            distancia_tiles: distância desejada em tiles (aproximada)
             max_tentativas: máximo de tentativas para encontrar destino válido
 
         Returns:
-            (tela_x, tela_y, distancia_real_px) ou None se não encontrar
+            (tela_x, tela_y, distancia_astar_px, path) ou None se não encontrar
             - tela_x, tela_y: coordenadas na tela
-            - distancia_real_px: distância MANHATTAN em pixels (real percorrida)
+            - distancia_astar_px: distância REAL do caminho A* em pixels
+            - path: lista de pontos do caminho A*
         """
         for _ in range(max_tentativas):
             # PREFERÊNCIA CARDINAL: 80% chance de movimento reto
@@ -145,12 +173,6 @@ class CalibradorVelocidade:
                 offset_x = int(distancia_px * math.cos(angulo))
                 offset_y = int(distancia_px * math.sin(angulo))
 
-            # Calcular distância MANHATTAN (distância real que personagem vai percorrer)
-            # Exemplo: offset (100, 100) = diagonal
-            #   Euclidiana: sqrt(100² + 100²) = 141 pixels
-            #   Manhattan: |100| + |100| = 200 pixels ✅ CORRETO!
-            distancia_real_px = abs(offset_x) + abs(offset_y)
-
             # Coordenadas na tela
             tela_x = self.centro_x + offset_x
             tela_y = self.centro_y + offset_y
@@ -161,15 +183,41 @@ class CalibradorVelocidade:
             if tela_y < 100 or tela_y > 800:
                 continue
 
-            # Converter para mundo e validar
+            # Converter para mundo
             mundo_x, mundo_y = self.converter_tela_para_mundo(tela_x, tela_y)
 
             if mundo_x is None:
-                # Sem GPS ainda, aceitar qualquer destino na tela
-                return tela_x, tela_y, distancia_real_px
+                # Sem GPS ainda, fallback para Manhattan
+                distancia_manhattan = abs(offset_x) + abs(offset_y)
+                return tela_x, tela_y, distancia_manhattan, None
 
-            if self.validar_destino(mundo_x, mundo_y):
-                return tela_x, tela_y, distancia_real_px
+            # Validar que destino é walkable
+            if not self.validar_destino(mundo_x, mundo_y):
+                continue  # Destino em parede, tentar outro
+
+            # USAR A* para calcular caminho REAL
+            if self.pathfinder is not None:
+                # Calcular caminho usando A*
+                path = self.pathfinder.find_path(
+                    int(self.player_x), int(self.player_y),
+                    int(mundo_x), int(mundo_y)
+                )
+
+                # Se caminho não existe (bloqueado por paredes), descartar
+                if path is None:
+                    continue
+
+                # Distância REAL = número de tiles no caminho A*
+                distancia_astar_tiles = len(path)
+                distancia_astar_px = distancia_astar_tiles * self.pixels_por_tile
+
+                # Aceitar esse destino
+                return tela_x, tela_y, distancia_astar_px, path
+
+            else:
+                # Fallback: sem A*, usar Manhattan
+                distancia_manhattan = abs(offset_x) + abs(offset_y)
+                return tela_x, tela_y, distancia_manhattan, None
 
         # Não encontrou destino válido
         return None
@@ -325,15 +373,15 @@ class CalibradorVelocidade:
             for tentativa in range(3):
                 print(f"\n   Tentativa {tentativa + 1}/3 para {distancia_tiles} tiles:")
 
-                # Encontrar destino válido (walkable)
+                # Encontrar destino válido usando A* pathfinding
                 destino = self.encontrar_destino_valido(distancia_tiles)
 
                 if destino is None:
-                    print(f"      ❌ Não encontrou destino walkable válido para {distancia_tiles} tiles")
+                    print(f"      ❌ Não encontrou destino válido para {distancia_tiles} tiles")
                     continue
 
-                # Desempacotar 3 valores: tela_x, tela_y, distancia_real_px (Manhattan)
-                destino_x, destino_y, distancia_real_px = destino
+                # Desempacotar 4 valores: tela_x, tela_y, distancia_astar_px, path
+                destino_x, destino_y, distancia_real_px, path = destino
 
                 # Determinar tipo de movimento (cardinal vs diagonal)
                 offset_x = destino_x - self.centro_x
@@ -353,7 +401,19 @@ class CalibradorVelocidade:
                     print(f"      📍 Destino: ({destino_x}, {destino_y})")
 
                 print(f"      🧭 Movimento: {movimento_tipo}")
-                print(f"      📏 Distância real (Manhattan): {distancia_real_px} pixels")
+
+                # Mostrar distância A* (caminho real) vs Manhattan (linha reta)
+                if path is not None:
+                    distancia_manhattan = abs(offset_x) + abs(offset_y)
+                    tiles_astar = len(path)
+                    diferenca_percent = ((distancia_real_px - distancia_manhattan) / distancia_manhattan * 100) if distancia_manhattan > 0 else 0
+
+                    print(f"      📏 Distância A* (caminho real): {distancia_real_px} px ({tiles_astar} tiles)")
+                    print(f"      📐 Distância Manhattan (linha reta): {distancia_manhattan} px")
+                    if diferenca_percent > 5:
+                        print(f"      🧮 Diferença: +{diferenca_percent:.1f}% (contornou obstáculos!)")
+                else:
+                    print(f"      📏 Distância: {distancia_real_px} pixels (Manhattan - sem A*)")
 
                 duracao = self.medir_movimento(destino_x, destino_y, distancia_tiles)
 
