@@ -50,10 +50,8 @@ class CameraVirtual:
         self.centro_x = 800  # Personagem sempre no centro
         self.centro_y = 450
 
-        # Escalas (pixels por tile)
-        self.pixels_por_tile_mundo = 32  # No mundo (coordenadas absolutas)
-        self.pixels_por_tile_tela = 32   # Na tela do jogo (mesma escala!)
-        self.pixels_por_tile_mapa = 20   # No mapa (minimap comprimido)
+        # Carregar escala do mapa (igual ao navegador)
+        self._carregar_escala_mapa()
 
         # Posição virtual do personagem (coordenadas mundo)
         self.pos_x = None
@@ -63,27 +61,42 @@ class CameraVirtual:
         self.movimentos_desde_gps = 0
         self.max_movimentos_sem_gps = 5  # Corrigir a cada 5 movimentos
 
-        # Campo de visão (RETÂNGULO da tela do jogo)
-        # Tela: 1600x900 pixels (32px/tile)
-        # Convertido para mapa: usar escala 20px/tile
-        self.fov_largura_tiles = self.tela_largura / self.pixels_por_tile_mundo  # 50 tiles
-        self.fov_altura_tiles = self.tela_altura / self.pixels_por_tile_mundo    # 28.125 tiles
-
-        # Dimensões do FOV no mapa mundo (em pixels)
-        self.fov_largura_mapa = self.fov_largura_tiles * self.pixels_por_tile_mapa  # 1000px
-        self.fov_altura_mapa = self.fov_altura_tiles * self.pixels_por_tile_mapa    # 562.5px
-
-        # Limite de clique (campo de visão) - agora baseado no retângulo
-        self.max_clique_tiles = 6  # 6 tiles = 192 pixels
-        self.max_clique_pixels = self.max_clique_tiles * self.pixels_por_tile_tela
+        # Campo de visão (RETÂNGULO da tela do jogo no mapa mundo)
+        # Fórmula do navegador: raio_visivel = (tela / 2) / escala
+        # FOV total = raio * 2
+        # Com escala 20.0: FOV = 1600/20 x 900/20 = 80x45 pixels
+        self.fov_largura_mapa = self.tela_largura / self.escala_x
+        self.fov_altura_mapa = self.tela_altura / self.escala_y
 
         # Histórico de erros (para debug)
         self.historico_erros = []
 
+    def _carregar_escala_mapa(self):
+        """
+        Carrega escala do mapa (igual ao navegador)
+
+        A escala converte pixels do mapa mundo para pixels da tela:
+        x_tela = centro + (delta_mundo * escala)
+        """
+        try:
+            with open('map_transform_config.json', 'r', encoding='utf-8') as f:
+                config = json.load(f)
+
+            self.escala_x = config['escala']['x']
+            self.escala_y = config['escala']['y']
+
+        except FileNotFoundError:
+            # Fallback: usar escala padrão do GPS (0.2x)
+            # escala = 1 / 0.2 = 5.0
+            print("   ⚠️ map_transform_config.json não encontrado")
+            print("   Usando escala padrão: 5.0 (GPS 0.2x)")
+            self.escala_x = 5.0
+            self.escala_y = 5.0
+
         print("🎥 Câmera Virtual inicializada!")
         print(f"   Tela do jogo: {self.tela_largura}x{self.tela_altura}px")
-        print(f"   Campo de visão (tiles): {self.fov_largura_tiles:.1f}x{self.fov_altura_tiles:.1f}")
-        print(f"   Campo de visão (mapa): {self.fov_largura_mapa:.0f}x{self.fov_altura_mapa:.0f}px")
+        print(f"   Escala mapa: {self.escala_x:.1f}x{self.escala_y:.1f}")
+        print(f"   FOV (mapa mundo): {self.fov_largura_mapa:.1f}x{self.fov_altura_mapa:.1f}px")
         print(f"   GPS a cada {self.max_movimentos_sem_gps} movimentos")
 
     def inicializar_posicao(self):
@@ -139,18 +152,17 @@ class CameraVirtual:
         delta_x = x_mundo - self.pos_x
         delta_y = y_mundo - self.pos_y
 
-        # 2. Na TELA DO JOGO, a escala é a MESMA do mundo (1:1)
-        #    Não há compressão como no minimap!
-        #    32 pixels no mundo = 32 pixels na tela
+        # 2. Aplicar escala (igual ao navegador)
+        #    x_tela = centro + (delta_mundo * escala)
+        #    Com escala 20.0: 1px mundo = 20px tela
+        x_tela = self.centro_x + (delta_x * self.escala_x)
+        y_tela = self.centro_y + (delta_y * self.escala_y)
 
-        # 3. Personagem está SEMPRE no centro da tela (800, 450)
-        #    Então basta adicionar o delta!
-        x_tela = self.centro_x + delta_x
-        y_tela = self.centro_y + delta_y
+        # 3. Verificar se está dentro do campo de visão (retângulo FOV)
+        half_fov_x = self.fov_largura_mapa / 2
+        half_fov_y = self.fov_altura_mapa / 2
 
-        # 4. Verificar se está dentro do campo de visão
-        distancia = np.sqrt(delta_x**2 + delta_y**2)
-        alcancavel = distancia <= self.max_clique_pixels
+        alcancavel = (abs(delta_x) <= half_fov_x and abs(delta_y) <= half_fov_y)
 
         return int(x_tela), int(y_tela), alcancavel
 
@@ -171,12 +183,15 @@ class CameraVirtual:
             return None, None
 
         # Delta em pixels da tela
-        delta_x = x_tela - self.centro_x
-        delta_y = y_tela - self.centro_y
+        delta_tela_x = x_tela - self.centro_x
+        delta_tela_y = y_tela - self.centro_y
 
-        # Escala 1:1, então delta na tela = delta no mundo
-        x_mundo = self.pos_x + delta_x
-        y_mundo = self.pos_y + delta_y
+        # Converter de volta para mundo (dividir pela escala)
+        delta_mundo_x = delta_tela_x / self.escala_x
+        delta_mundo_y = delta_tela_y / self.escala_y
+
+        x_mundo = self.pos_x + delta_mundo_x
+        y_mundo = self.pos_y + delta_mundo_y
 
         return int(x_mundo), int(y_mundo)
 
@@ -210,21 +225,21 @@ class CameraVirtual:
         delta_x = x_mundo_destino - self.pos_x
         delta_y = y_mundo_destino - self.pos_y
         distancia_px = np.sqrt(delta_x**2 + delta_y**2)
-        distancia_tiles = distancia_px / self.pixels_por_tile_mundo
 
         print(f"\n🎯 Navegando via câmera virtual:")
         print(f"   De:   ({self.pos_x}, {self.pos_y})")
         print(f"   Para: ({x_mundo_destino}, {y_mundo_destino})")
-        print(f"   Distância: {distancia_px:.0f}px ({distancia_tiles:.1f} tiles)")
+        print(f"   Distância: {distancia_px:.0f}px")
         print(f"   Clique tela: ({x_tela}, {y_tela})")
-        print(f"   Alcançável: {'✅ SIM' if alcancavel else '❌ NÃO (muito longe!)'}")
+        print(f"   Alcançável: {'✅ SIM' if alcancavel else '❌ NÃO (fora do FOV!)'}")
 
         if not alcancavel:
             return {
                 'sucesso': False,
-                'erro': f'Destino fora do campo de visão ({distancia_tiles:.1f} > {self.max_clique_tiles} tiles)',
-                'distancia_tiles': distancia_tiles,
-                'max_tiles': self.max_clique_tiles
+                'erro': f'Destino fora do campo de visão (FOV: {self.fov_largura_mapa:.0f}x{self.fov_altura_mapa:.0f}px)',
+                'distancia_px': distancia_px,
+                'fov_largura': self.fov_largura_mapa,
+                'fov_altura': self.fov_altura_mapa
             }
 
         # Executar clique DIRETO no chão do jogo (SEM ABRIR MAPA!)
@@ -246,7 +261,6 @@ class CameraVirtual:
             'x_tela': x_tela,
             'y_tela': y_tela,
             'distancia_px': distancia_px,
-            'distancia_tiles': distancia_tiles,
             'movimentos_desde_gps': self.movimentos_desde_gps
         }
 
@@ -321,14 +335,13 @@ class CameraVirtual:
         # Salvar no histórico
         self.historico_erros.append({
             'timestamp': time.time(),
-            'erro_px': erro_total,
-            'erro_tiles': erro_total / self.pixels_por_tile_mundo
+            'erro_px': erro_total
         })
 
         print(f"   ✅ Posição corrigida!")
         print(f"   Virtual: ({pos_virtual_anterior_x}, {pos_virtual_anterior_y})")
         print(f"   Real:    ({pos_real_x}, {pos_real_y})")
-        print(f"   Erro:    {erro_total:.1f}px ({erro_total/self.pixels_por_tile_mundo:.2f} tiles)")
+        print(f"   Erro:    {erro_total:.1f}px")
 
     def obter_estatisticas_erro(self):
         """
@@ -341,14 +354,11 @@ class CameraVirtual:
             return None
 
         erros_px = [e['erro_px'] for e in self.historico_erros]
-        erros_tiles = [e['erro_tiles'] for e in self.historico_erros]
 
         return {
             'num_correcoes': len(self.historico_erros),
             'erro_medio_px': np.mean(erros_px),
             'erro_max_px': np.max(erros_px),
-            'erro_medio_tiles': np.mean(erros_tiles),
-            'erro_max_tiles': np.max(erros_tiles),
             'historico': self.historico_erros
         }
 
@@ -400,7 +410,7 @@ class CameraVirtual:
         # Texto
         cv2.putText(
             img,
-            f"FOV: {self.fov_largura_tiles:.0f}x{self.fov_altura_tiles:.0f} tiles ({int(self.fov_largura_mapa)}x{int(self.fov_altura_mapa)}px)",
+            f"FOV: {int(self.fov_largura_mapa)}x{int(self.fov_altura_mapa)}px (escala {self.escala_x:.1f})",
             (x1, y1 - 10),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.6,
@@ -552,9 +562,8 @@ class VisualizadorCameraVirtual:
             # Texto da distância
             if self.camera.pos_x is not None:
                 dist_px = np.sqrt((dest_x - self.camera.pos_x)**2 + (dest_y - self.camera.pos_y)**2)
-                dist_tiles = dist_px / self.camera.pixels_por_tile_mundo
 
-                texto = f"{dist_tiles:.1f} tiles"
+                texto = f"{dist_px:.0f}px"
                 cv2.putText(
                     img,
                     texto,
@@ -607,10 +616,11 @@ class VisualizadorCameraVirtual:
         info_lines = [
             f"Camera Virtual - Debug ao Vivo",
             f"Posicao: ({int(self.camera.pos_x) if self.camera.pos_x else '?'}, {int(self.camera.pos_y) if self.camera.pos_y else '?'})",
-            f"FOV: {self.camera.fov_largura_tiles:.0f}x{self.camera.fov_altura_tiles:.0f} tiles",
-            f"FOV mapa: {int(self.camera.fov_largura_mapa)}x{int(self.camera.fov_altura_mapa)}px",
-            f"Movimentos desde GPS: {self.camera.movimentos_desde_gps}/{self.camera.max_movimentos_sem_gps}",
-            f"Historico: {len(self.historico_posicoes)} posicoes",
+            f"Tela: {self.camera.tela_largura}x{self.camera.tela_altura}px",
+            f"Escala: {self.camera.escala_x:.1f}x{self.camera.escala_y:.1f}",
+            f"FOV: {int(self.camera.fov_largura_mapa)}x{int(self.camera.fov_altura_mapa)}px",
+            f"GPS: {self.camera.movimentos_desde_gps}/{self.camera.max_movimentos_sem_gps}",
+            f"Historico: {len(self.historico_posicoes)} pos",
             f"Zoom: {self.zoom_level:.1f}x"
         ]
 
@@ -703,12 +713,12 @@ if __name__ == "__main__":
         visualizador.atualizar()
         time.sleep(2)
 
-    # 6. Teste 1: Navegar para um ponto próximo (2 tiles)
+    # 6. Teste 1: Navegar para um ponto próximo (10 pixels mundo)
     print("\n" + "=" * 70)
-    print("TESTE 1: Navegar 2 tiles para a direita")
+    print("TESTE 1: Navegar 10px para a direita (mapa mundo)")
     print("=" * 70)
 
-    destino_x = camera.pos_x + (2 * 32)  # 2 tiles = 64 pixels
+    destino_x = camera.pos_x + 10  # 10 pixels no mapa mundo
     destino_y = camera.pos_y
 
     # Mostrar destino no visualizador
@@ -729,14 +739,14 @@ if __name__ == "__main__":
 
     time.sleep(2)
 
-    # 7. Teste 2: Navegar para um ponto mais longe (4 tiles)
+    # 7. Teste 2: Navegar para um ponto mais longe (20 pixels mundo)
     if visualizador and visualizador.rodando:
         print("\n" + "=" * 70)
-        print("TESTE 2: Navegar 4 tiles para cima")
+        print("TESTE 2: Navegar 20px para cima (mapa mundo)")
         print("=" * 70)
 
         destino_x = camera.pos_x
-        destino_y = camera.pos_y - (4 * 32)  # 4 tiles = 128 pixels (cima = negativo)
+        destino_y = camera.pos_y - 20  # 20 pixels no mapa mundo (cima = negativo)
 
         # Mostrar destino no visualizador
         visualizador.atualizar(destino=(destino_x, destino_y))
@@ -757,11 +767,11 @@ if __name__ == "__main__":
     # 8. Teste 3: Movimento em quadrado (para ver histórico)
     if visualizador and visualizador.rodando:
         print("\n" + "=" * 70)
-        print("TESTE 3: Movimento em quadrado (3x3 tiles)")
+        print("TESTE 3: Movimento em quadrado (15x15 pixels mundo)")
         print("=" * 70)
 
         # Criar path em quadrado
-        lado = 3 * 32  # 3 tiles
+        lado = 15  # 15 pixels no mapa mundo
         pos_inicial_x = camera.pos_x
         pos_inicial_y = camera.pos_y
 
@@ -797,10 +807,10 @@ if __name__ == "__main__":
     # 9. Teste 4: Tentar navegar MUITO longe (deve falhar)
     if visualizador and visualizador.rodando:
         print("\n" + "=" * 70)
-        print("TESTE 4: Tentar navegar 10 tiles (MUITO LONGE - deve falhar!)")
+        print("TESTE 4: Tentar navegar 100px (MUITO LONGE - deve falhar!)")
         print("=" * 70)
 
-        destino_x = camera.pos_x + (10 * 32)  # 10 tiles = 320 pixels (muito longe!)
+        destino_x = camera.pos_x + 100  # 100 pixels mundo (muito longe!)
         destino_y = camera.pos_y
 
         # Mostrar destino (linha vermelha = fora do alcance)
@@ -825,8 +835,8 @@ if __name__ == "__main__":
     stats = camera.obter_estatisticas_erro()
     if stats:
         print(f"Correções GPS: {stats['num_correcoes']}")
-        print(f"Erro médio: {stats['erro_medio_px']:.1f}px ({stats['erro_medio_tiles']:.2f} tiles)")
-        print(f"Erro máximo: {stats['erro_max_px']:.1f}px ({stats['erro_max_tiles']:.2f} tiles)")
+        print(f"Erro médio: {stats['erro_medio_px']:.1f}px")
+        print(f"Erro máximo: {stats['erro_max_px']:.1f}px")
     else:
         print("Nenhuma correção GPS realizada ainda")
 
