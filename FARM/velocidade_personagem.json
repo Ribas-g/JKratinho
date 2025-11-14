@@ -1,68 +1,138 @@
 {
-  "velocidade_px_s": 81.54301617789307,
-  "tempo_por_tile": 0.3924309094746908,
+  "velocidade_px_s": 66.00213511776853,
+  "tempo_por_tile": 0.4848328003768659,
   "pixels_por_tile": 32,
   "medicoes_detalhadas": [
     {
       "distancia_tiles": 1,
-      "pixels": 32,
-      "tempo_medio": 0.4461447397867839,
-      "velocidade_px_s": 71.72560190957996,
+      "distancia_media_px": 32.0,
+      "tempo_medio": 0.42574214935302734,
+      "velocidade_px_s": 75.1628657125641,
       "medicoes_individuais": [
-        0.4633922576904297,
-        0.43945908546447754,
-        0.43558287620544434
-      ]
+        {
+          "duracao": 0.43994998931884766,
+          "distancia_px": 32,
+          "tipo_movimento": "cardinal (→←↑↓)"
+        },
+        {
+          "duracao": 0.3974323272705078,
+          "distancia_px": 32,
+          "tipo_movimento": "cardinal (→←↑↓)"
+        },
+        {
+          "duracao": 0.43984413146972656,
+          "distancia_px": 32,
+          "tipo_movimento": "cardinal (→←↑↓)"
+        }
+      ],
+      "cardinais": 3,
+      "diagonais": 0
     },
     {
       "distancia_tiles": 2,
-      "pixels": 64,
-      "tempo_medio": 0.976193348566691,
-      "velocidade_px_s": 65.56078270146878,
+      "distancia_media_px": 64.0,
+      "tempo_medio": 0.8777547677357992,
+      "velocidade_px_s": 72.91330375235712,
       "medicoes_individuais": [
-        1.1409659385681152,
-        0.6416032314300537,
-        1.1460108757019043
-      ]
+        {
+          "duracao": 0.8793654441833496,
+          "distancia_px": 64,
+          "tipo_movimento": "cardinal (→←↑↓)"
+        },
+        {
+          "duracao": 0.875990629196167,
+          "distancia_px": 64,
+          "tipo_movimento": "cardinal (→←↑↓)"
+        },
+        {
+          "duracao": 0.8779082298278809,
+          "distancia_px": 64,
+          "tipo_movimento": "cardinal (→←↑↓)"
+        }
+      ],
+      "cardinais": 3,
+      "diagonais": 0
     },
     {
       "distancia_tiles": 3,
-      "pixels": 96,
-      "tempo_medio": 1.5696837107340496,
-      "velocidade_px_s": 61.15881775641692,
+      "distancia_media_px": 96.0,
+      "tempo_medio": 2.111213525136312,
+      "velocidade_px_s": 45.471478302414575,
       "medicoes_individuais": [
-        1.8363211154937744,
-        0.5,
-        2.372730016708374
-      ]
+        {
+          "duracao": 2.1151416301727295,
+          "distancia_px": 96,
+          "tipo_movimento": "cardinal (→←↑↓)"
+        },
+        {
+          "duracao": 2.110354423522949,
+          "distancia_px": 96,
+          "tipo_movimento": "cardinal (→←↑↓)"
+        },
+        {
+          "duracao": 2.108144521713257,
+          "distancia_px": 96,
+          "tipo_movimento": "cardinal (→←↑↓)"
+        }
+      ],
+      "cardinais": 3,
+      "diagonais": 0
     },
     {
       "distancia_tiles": 4,
-      "pixels": 128,
-      "tempo_medio": 1.675357421239217,
-      "velocidade_px_s": 76.40160742853416,
+      "distancia_media_px": 129.33333333333334,
+      "tempo_medio": 1.5948405265808105,
+      "velocidade_px_s": 81.09483749488857,
       "medicoes_individuais": [
-        2.366576671600342,
-        0.5,
-        2.1594955921173096
-      ]
+        {
+          "duracao": 0.5,
+          "distancia_px": 132,
+          "tipo_movimento": "diagonal (escada)"
+        },
+        {
+          "duracao": 2.369170665740967,
+          "distancia_px": 128,
+          "tipo_movimento": "cardinal (→←↑↓)"
+        },
+        {
+          "duracao": 1.9153509140014648,
+          "distancia_px": 128,
+          "tipo_movimento": "cardinal (→←↑↓)"
+        }
+      ],
+      "cardinais": 2,
+      "diagonais": 1
     },
     {
       "distancia_tiles": 5,
-      "pixels": 160,
-      "tempo_medio": 1.2190844217936199,
-      "velocidade_px_s": 131.24603771459445,
+      "distancia_media_px": 163.66666666666666,
+      "tempo_medio": 2.3386961619059243,
+      "velocidade_px_s": 69.98201362475673,
       "medicoes_individuais": [
-        0.5,
-        2.6572532653808594,
-        0.5
-      ]
+        {
+          "duracao": 6.016088485717773,
+          "distancia_px": 160,
+          "tipo_movimento": "cardinal (→←↑↓)"
+        },
+        {
+          "duracao": 0.5,
+          "distancia_px": 171,
+          "tipo_movimento": "diagonal (escada)"
+        },
+        {
+          "duracao": 0.5,
+          "distancia_px": 160,
+          "tipo_movimento": "cardinal (→←↑↓)"
+        }
+      ],
+      "cardinais": 2,
+      "diagonais": 1
     }
   ],
-  "data_calibracao": "2025-11-14 10:40:35",
+  "data_calibracao": "2025-11-14 10:59:28",
   "posicao_inicial": {
-    "x": 357,
-    "y": 1149,
+    "x": 370,
+    "y": 1132,
     "zone": "Vila Inicial"
   }
 }
