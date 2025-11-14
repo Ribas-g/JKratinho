@@ -86,7 +86,7 @@ class FastCapture:
 
         cmd = [
             'scrcpy',
-            '--no-display',
+            '--no-playback',  # Novo parâmetro no scrcpy 3.x (era --no-display)
             '--record=-',
             '--video-codec=h264',
             '--max-fps=30',
