@@ -193,57 +193,22 @@ class CalibradorManual:
             print(f"   ⚠️ Timeout aguardando fim do movimento")
             return None
 
-        # GPS de verificação
-        print(f"   📡 Verificando posição final...")
-        resultado_final = self.gps.get_current_position(keep_map_open=True, verbose=False)
-
-        if not resultado_final or 'x' not in resultado_final:
-            print(f"   ⚠️ GPS falhou")
-            return None
-
-        pos_final_x = resultado_final['x']
-        pos_final_y = resultado_final['y']
-
-        # Calcular distância real
-        delta_x = abs(pos_final_x - self.player_x)
-        delta_y = abs(pos_final_y - self.player_y)
-        distancia_real_px = delta_x + delta_y
-        tiles_reais = distancia_real_px / self.pixels_por_tile
-
-        print(f"   📍 Posição final: ({pos_final_x}, {pos_final_y})")
-        print(f"   📏 Distância real: {distancia_real_px}px = {tiles_reais:.1f} tiles")
-
-        # Verificar se andou a distância esperada
-        tiles_esperados = tiles
-        diferenca = abs(tiles_reais - tiles_esperados)
-
-        if diferenca > 0.5:
-            print(f"   ⚠️ ATENÇÃO: Diferença de {diferenca:.1f} tiles!")
-            print(f"   💡 Esperado: {tiles_esperados} tiles, Real: {tiles_reais:.1f} tiles")
-        else:
-            print(f"   ✅ Distância confere!")
-
-        # Calcular velocidade
-        velocidade = distancia_real_px / duracao
+        # Calcular velocidade (usando distância solicitada, sem GPS de verificação)
+        distancia_px = tiles * self.pixels_por_tile
+        velocidade = distancia_px / duracao
         tempo_por_tile = self.pixels_por_tile / velocidade
 
         print(f"   🏃 Velocidade: {velocidade:.1f} px/s")
         print(f"   ⏱️ Tempo por tile: {tempo_por_tile:.3f}s")
 
-        # Atualizar posição
-        self.player_x = pos_final_x
-        self.player_y = pos_final_y
-
         return {
             'direcao': direcao,
             'tiles_solicitados': tiles,
-            'tiles_reais': tiles_reais,
-            'distancia_px': distancia_real_px,
+            'tiles_reais': tiles,
+            'distancia_px': distancia_px,
             'duracao': duracao,
             'velocidade_px_s': velocidade,
-            'tempo_por_tile': tempo_por_tile,
-            'pos_inicial': (self.player_x, self.player_y),
-            'pos_final': (pos_final_x, pos_final_y)
+            'tempo_por_tile': tempo_por_tile
         }
 
     def menu_principal(self):
