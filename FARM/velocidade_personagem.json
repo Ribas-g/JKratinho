@@ -1,137 +1,148 @@
 {
-  "velocidade_px_s": 2625.4928143259,
-  "tempo_por_tile": 0.012188187994799772,
+  "velocidade_px_s": 10664.265491667024,
+  "tempo_por_tile": 0.0030006754825266267,
   "pixels_por_tile": 32,
+  "metodo_calibracao": "mapa_aberto_ground_truth",
   "medicoes_detalhadas": [
     {
       "distancia_tiles": 1,
-      "distancia_media_px": 981.3333333333334,
-      "tempo_medio": 0.3717803160349528,
-      "velocidade_px_s": 2639.5516142416577,
+      "tiles_ground_truth_medio": 30.333333333333332,
+      "distancia_media_px": 970.6666666666666,
+      "tempo_medio": 0.29002881050109863,
+      "velocidade_px_s": 3346.79394433123,
       "medicoes_individuais": [
         {
-          "duracao": 0.42237114906311035,
+          "duracao": 0.2800159454345703,
           "distancia_px": 1056,
-          "tipo_movimento": "cardinal (→←↑↓)"
+          "tiles_ground_truth": 33,
+          "velocidade": 3771.21380841774
         },
         {
-          "duracao": 0.19296979904174805,
-          "distancia_px": 1024,
-          "tipo_movimento": "diagonal (escada)"
+          "duracao": 0.29358649253845215,
+          "distancia_px": 800,
+          "tiles_ground_truth": 25,
+          "velocidade": 2724.9210039703066
         },
         {
-          "duracao": 0.5,
-          "distancia_px": 864,
-          "tipo_movimento": "diagonal (escada)"
+          "duracao": 0.29648399353027344,
+          "distancia_px": 1056,
+          "tiles_ground_truth": 33,
+          "velocidade": 3561.7437131295715
         }
-      ],
-      "cardinais": 1,
-      "diagonais": 2
+      ]
     },
     {
       "distancia_tiles": 2,
-      "distancia_media_px": 2037.3333333333333,
-      "tempo_medio": 0.8971193631490072,
-      "velocidade_px_s": 2270.9724224232823,
+      "tiles_ground_truth_medio": 65.0,
+      "distancia_media_px": 2080.0,
+      "tempo_medio": 0.28078269958496094,
+      "velocidade_px_s": 7407.86381452473,
       "medicoes_individuais": [
         {
-          "duracao": 0.8544700145721436,
+          "duracao": 0.29148101806640625,
           "distancia_px": 2080,
-          "tipo_movimento": "cardinal (→←↑↓)"
+          "tiles_ground_truth": 65,
+          "velocidade": 7135.970684465384
         },
         {
-          "duracao": 1.1715257167816162,
-          "distancia_px": 1952,
-          "tipo_movimento": "diagonal (escada)"
+          "duracao": 0.2798798084259033,
+          "distancia_px": 2080,
+          "tiles_ground_truth": 65,
+          "velocidade": 7431.761553998165
         },
         {
-          "duracao": 0.6653623580932617,
+          "duracao": 0.27098727226257324,
           "distancia_px": 2080,
-          "tipo_movimento": "cardinal (→←↑↓)"
+          "tiles_ground_truth": 65,
+          "velocidade": 7675.637245370635
         }
-      ],
-      "cardinais": 2,
-      "diagonais": 1
+      ]
     },
     {
       "distancia_tiles": 3,
-      "distancia_media_px": 3104.0,
-      "tempo_medio": 1.40459410349528,
-      "velocidade_px_s": 2209.8910940006167,
+      "tiles_ground_truth_medio": 98.33333333333333,
+      "distancia_media_px": 3146.6666666666665,
+      "tempo_medio": 0.2814923922220866,
+      "velocidade_px_s": 11178.514068629138,
       "medicoes_individuais": [
         {
-          "duracao": 1.4016737937927246,
+          "duracao": 0.27013134956359863,
           "distancia_px": 3104,
-          "tipo_movimento": "cardinal (→←↑↓)"
+          "tiles_ground_truth": 97,
+          "velocidade": 11490.706299045112
         },
         {
-          "duracao": 1.4201691150665283,
-          "distancia_px": 3104,
-          "tipo_movimento": "cardinal (→←↑↓)"
+          "duracao": 0.2959132194519043,
+          "distancia_px": 3232,
+          "tiles_ground_truth": 101,
+          "velocidade": 10922.121039358659
         },
         {
-          "duracao": 1.391939401626587,
+          "duracao": 0.27843260765075684,
           "distancia_px": 3104,
-          "tipo_movimento": "cardinal (→←↑↓)"
+          "tiles_ground_truth": 97,
+          "velocidade": 11148.11956182016
         }
-      ],
-      "cardinais": 3,
-      "diagonais": 0
+      ]
     },
     {
       "distancia_tiles": 4,
+      "tiles_ground_truth_medio": 129.0,
       "distancia_media_px": 4128.0,
-      "tempo_medio": 1.4940148989359539,
-      "velocidade_px_s": 2763.0246545332216,
+      "tempo_medio": 0.29472700754801434,
+      "velocidade_px_s": 14006.181633447699,
       "medicoes_individuais": [
         {
-          "duracao": 1.6543574333190918,
+          "duracao": 0.3002026081085205,
           "distancia_px": 4128,
-          "tipo_movimento": "cardinal (→←↑↓)"
+          "tiles_ground_truth": 129,
+          "velocidade": 13750.713313282627
         },
         {
-          "duracao": 2.3276872634887695,
+          "duracao": 0.28806567192077637,
           "distancia_px": 4128,
-          "tipo_movimento": "cardinal (→←↑↓)"
+          "tiles_ground_truth": 129,
+          "velocidade": 14330.06568424189
         },
         {
-          "duracao": 0.5,
+          "duracao": 0.2959127426147461,
           "distancia_px": 4128,
-          "tipo_movimento": "cardinal (→←↑↓)"
+          "tiles_ground_truth": 129,
+          "velocidade": 13950.058262189521
         }
-      ],
-      "cardinais": 3,
-      "diagonais": 0
+      ]
     },
     {
       "distancia_tiles": 5,
-      "distancia_media_px": 5280.0,
-      "tempo_medio": 1.7478252251942952,
-      "velocidade_px_s": 3020.8970118354105,
+      "tiles_ground_truth_medio": 161.33333333333334,
+      "distancia_media_px": 5162.666666666667,
+      "tempo_medio": 0.30529602368672687,
+      "velocidade_px_s": 16910.36327405374,
       "medicoes_individuais": [
         {
-          "duracao": 0.5,
+          "duracao": 0.3018062114715576,
           "distancia_px": 5152,
-          "tipo_movimento": "cardinal (→←↑↓)"
+          "tiles_ground_truth": 161,
+          "velocidade": 17070.556549779718
         },
         {
-          "duracao": 0.5,
-          "distancia_px": 5088,
-          "tipo_movimento": "diagonal (escada)"
+          "duracao": 0.3157486915588379,
+          "distancia_px": 5184,
+          "tiles_ground_truth": 162,
+          "velocidade": 16418.12029182706
         },
         {
-          "duracao": 4.243475675582886,
-          "distancia_px": 5600,
-          "tipo_movimento": "diagonal (escada)"
+          "duracao": 0.29833316802978516,
+          "distancia_px": 5152,
+          "tiles_ground_truth": 161,
+          "velocidade": 17269.283311755775
         }
-      ],
-      "cardinais": 1,
-      "diagonais": 2
+      ]
     }
   ],
-  "data_calibracao": "2025-11-14 11:37:24",
+  "data_calibracao": "2025-11-14 13:30:35",
   "posicao_inicial": {
-    "x": 361,
+    "x": 349,
     "y": 1136,
     "zone": "Vila Inicial"
   }
