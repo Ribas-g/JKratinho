@@ -62,11 +62,15 @@ class CameraVirtual:
         self.max_movimentos_sem_gps = 5  # Corrigir a cada 5 movimentos
 
         # Campo de visão (RETÂNGULO da tela do jogo no mapa mundo)
-        # Fórmula do navegador: raio_visivel = (tela / 2) / escala
-        # FOV total = raio * 2
-        # Com escala 20.0: FOV = 1600/20 x 900/20 = 80x45 pixels
-        self.fov_largura_mapa = self.tela_largura / self.escala_x
-        self.fov_altura_mapa = self.tela_altura / self.escala_y
+        # IMPORTANTE: A visão do jogo SEM MAPA é mais "zoomed in" que o minimapa!
+        # Medido no Photoshop: tela 1600x900 = FOV 68x38 no mapa
+        # Fator de zoom: 1600/68 = 23.53x (largura), 900/38 = 23.68x (altura)
+        self.fov_zoom_factor_x = self.tela_largura / 68.0  # 23.53
+        self.fov_zoom_factor_y = self.tela_altura / 38.0   # 23.68
+
+        # FOV real no mapa mundo
+        self.fov_largura_mapa = 68.0  # pixels no mapa
+        self.fov_altura_mapa = 38.0   # pixels no mapa
 
         # Histórico de erros (para debug)
         self.historico_erros = []
@@ -74,8 +78,9 @@ class CameraVirtual:
         # Imprimir informações de inicialização
         print("🎥 Câmera Virtual inicializada!")
         print(f"   Tela do jogo: {self.tela_largura}x{self.tela_altura}px")
-        print(f"   Escala mapa: {self.escala_x:.1f}x{self.escala_y:.1f}")
-        print(f"   FOV (mapa mundo): {self.fov_largura_mapa:.1f}x{self.fov_altura_mapa:.1f}px")
+        print(f"   Escala minimapa: {self.escala_x:.1f}x{self.escala_y:.1f}")
+        print(f"   Fator zoom FOV: {self.fov_zoom_factor_x:.2f}x{self.fov_zoom_factor_y:.2f}")
+        print(f"   FOV (mapa mundo): {self.fov_largura_mapa:.0f}x{self.fov_altura_mapa:.0f}px")
         print(f"   GPS a cada {self.max_movimentos_sem_gps} movimentos")
 
     def _carregar_escala_mapa(self):
@@ -153,11 +158,11 @@ class CameraVirtual:
         delta_x = x_mundo - self.pos_x
         delta_y = y_mundo - self.pos_y
 
-        # 2. Aplicar escala (igual ao navegador)
-        #    x_tela = centro + (delta_mundo * escala)
-        #    Com escala 20.0: 1px mundo = 20px tela
-        x_tela = self.centro_x + (delta_x * self.escala_x)
-        y_tela = self.centro_y + (delta_y * self.escala_y)
+        # 2. Aplicar fator de zoom do FOV (conversão mundo → tela do jogo)
+        #    A tela do jogo tem mais zoom que o minimapa!
+        #    Fator medido: 1600/68 = 23.53x
+        x_tela = self.centro_x + (delta_x * self.fov_zoom_factor_x)
+        y_tela = self.centro_y + (delta_y * self.fov_zoom_factor_y)
 
         # 3. Verificar se está dentro do campo de visão (retângulo FOV)
         half_fov_x = self.fov_largura_mapa / 2
@@ -187,9 +192,9 @@ class CameraVirtual:
         delta_tela_x = x_tela - self.centro_x
         delta_tela_y = y_tela - self.centro_y
 
-        # Converter de volta para mundo (dividir pela escala)
-        delta_mundo_x = delta_tela_x / self.escala_x
-        delta_mundo_y = delta_tela_y / self.escala_y
+        # Converter de volta para mundo (dividir pelo fator de zoom)
+        delta_mundo_x = delta_tela_x / self.fov_zoom_factor_x
+        delta_mundo_y = delta_tela_y / self.fov_zoom_factor_y
 
         x_mundo = self.pos_x + delta_mundo_x
         y_mundo = self.pos_y + delta_mundo_y
@@ -411,7 +416,7 @@ class CameraVirtual:
         # Texto
         cv2.putText(
             img,
-            f"FOV: {int(self.fov_largura_mapa)}x{int(self.fov_altura_mapa)}px (escala {self.escala_x:.1f})",
+            f"FOV: {int(self.fov_largura_mapa)}x{int(self.fov_altura_mapa)}px (zoom {self.fov_zoom_factor_x:.1f}x)",
             (x1, y1 - 10),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.6,
@@ -618,11 +623,11 @@ class VisualizadorCameraVirtual:
             f"Camera Virtual - Debug ao Vivo",
             f"Posicao: ({int(self.camera.pos_x) if self.camera.pos_x else '?'}, {int(self.camera.pos_y) if self.camera.pos_y else '?'})",
             f"Tela: {self.camera.tela_largura}x{self.camera.tela_altura}px",
-            f"Escala: {self.camera.escala_x:.1f}x{self.camera.escala_y:.1f}",
+            f"Zoom FOV: {self.camera.fov_zoom_factor_x:.2f}x",
             f"FOV: {int(self.camera.fov_largura_mapa)}x{int(self.camera.fov_altura_mapa)}px",
             f"GPS: {self.camera.movimentos_desde_gps}/{self.camera.max_movimentos_sem_gps}",
             f"Historico: {len(self.historico_posicoes)} pos",
-            f"Zoom: {self.zoom_level:.1f}x"
+            f"Zoom view: {self.zoom_level:.1f}x"
         ]
 
         for i, line in enumerate(info_lines):
