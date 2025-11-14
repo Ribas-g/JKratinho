@@ -389,17 +389,256 @@ class CameraVirtual:
         return img
 
 
+class VisualizadorCameraVirtual:
+    """
+    Visualizador em tempo real da câmera virtual
+
+    Mostra uma janela com o mapa mundo e a câmera se movendo ao vivo!
+    """
+
+    def __init__(self, camera, mapa_path='MINIMAPA CERTOPRETO.png'):
+        """
+        Inicializa visualizador
+
+        Args:
+            camera: CameraVirtual instance
+            mapa_path: Path para imagem do mapa mundo
+        """
+        self.camera = camera
+
+        # Carregar mapa mundo
+        print(f"📖 Carregando mapa: {mapa_path}")
+        self.mapa_original = cv2.imread(mapa_path)
+
+        if self.mapa_original is None:
+            raise FileNotFoundError(f"Mapa não encontrado: {mapa_path}")
+
+        self.mapa_altura, self.mapa_largura = self.mapa_original.shape[:2]
+        print(f"   ✅ Mapa carregado: {self.mapa_largura}x{self.mapa_altura}")
+
+        # Configurações de visualização
+        self.janela_nome = "Camera Virtual - Debug ao Vivo"
+        self.zoom_level = 1.0
+        self.mostrar_historico = True
+        self.historico_posicoes = []  # Lista de posições anteriores
+
+        # Cores
+        self.cor_campo_visao = (0, 255, 255)      # Amarelo (campo de visão)
+        self.cor_posicao = (255, 0, 255)          # Magenta (posição atual)
+        self.cor_historico = (128, 128, 128)      # Cinza (histórico)
+        self.cor_destino = (0, 255, 0)            # Verde (próximo destino)
+
+        # Estado
+        self.rodando = False
+        self.proximo_destino = None
+
+    def iniciar(self):
+        """Inicia visualização"""
+        self.rodando = True
+        cv2.namedWindow(self.janela_nome, cv2.WINDOW_NORMAL)
+        cv2.resizeWindow(self.janela_nome, 1400, 900)
+        print("\n🎥 Visualizador iniciado!")
+        print("   Teclas:")
+        print("   - ESC: Fechar")
+        print("   - H: Toggle histórico")
+        print("   - +/-: Zoom in/out")
+        print("   - R: Reset zoom")
+
+    def parar(self):
+        """Para visualização"""
+        self.rodando = False
+        cv2.destroyWindow(self.janela_nome)
+
+    def atualizar(self, destino=None):
+        """
+        Atualiza visualização
+
+        Args:
+            destino: Tuple (x, y) do próximo destino (opcional)
+        """
+        if not self.rodando:
+            return
+
+        self.proximo_destino = destino
+
+        # Criar imagem de visualização
+        img = self.mapa_original.copy()
+
+        # 1. Desenhar histórico de posições
+        if self.mostrar_historico and len(self.historico_posicoes) > 1:
+            for i in range(len(self.historico_posicoes) - 1):
+                p1 = self.historico_posicoes[i]
+                p2 = self.historico_posicoes[i + 1]
+                cv2.line(img, p1, p2, self.cor_historico, 2)
+
+        # 2. Desenhar campo de visão (círculo amarelo)
+        if self.camera.pos_x is not None:
+            cv2.circle(
+                img,
+                (int(self.camera.pos_x), int(self.camera.pos_y)),
+                int(self.camera.max_clique_pixels),
+                self.cor_campo_visao,
+                3
+            )
+
+            # 3. Desenhar posição atual (círculo magenta)
+            cv2.circle(
+                img,
+                (int(self.camera.pos_x), int(self.camera.pos_y)),
+                8,
+                self.cor_posicao,
+                -1
+            )
+
+            # Adicionar ao histórico
+            pos_atual = (int(self.camera.pos_x), int(self.camera.pos_y))
+            if not self.historico_posicoes or self.historico_posicoes[-1] != pos_atual:
+                self.historico_posicoes.append(pos_atual)
+
+        # 4. Desenhar próximo destino (se houver)
+        if self.proximo_destino:
+            dest_x, dest_y = self.proximo_destino
+
+            # Verificar se destino está dentro do campo de visão
+            x_tela, y_tela, alcancavel = self.camera.mundo_para_tela_jogo(dest_x, dest_y)
+
+            # Linha do player ao destino
+            if self.camera.pos_x is not None:
+                cor_linha = self.cor_destino if alcancavel else (0, 0, 255)  # Verde se OK, vermelho se longe
+                cv2.line(
+                    img,
+                    (int(self.camera.pos_x), int(self.camera.pos_y)),
+                    (int(dest_x), int(dest_y)),
+                    cor_linha,
+                    2,
+                    cv2.LINE_AA
+                )
+
+            # Círculo no destino
+            cv2.circle(img, (int(dest_x), int(dest_y)), 6, self.cor_destino, -1)
+
+            # Texto da distância
+            if self.camera.pos_x is not None:
+                dist_px = np.sqrt((dest_x - self.camera.pos_x)**2 + (dest_y - self.camera.pos_y)**2)
+                dist_tiles = dist_px / self.camera.pixels_por_tile_mundo
+
+                texto = f"{dist_tiles:.1f} tiles"
+                cv2.putText(
+                    img,
+                    texto,
+                    (int(dest_x) + 10, int(dest_y) - 10),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5,
+                    self.cor_destino,
+                    2
+                )
+
+        # 5. Adicionar HUD (informações)
+        self._desenhar_hud(img)
+
+        # 6. Aplicar zoom
+        if self.zoom_level != 1.0:
+            # Centralizar zoom na posição da câmera
+            if self.camera.pos_x is not None:
+                img = self._aplicar_zoom(img)
+
+        # 7. Mostrar imagem
+        cv2.imshow(self.janela_nome, img)
+
+        # 8. Processar teclas
+        key = cv2.waitKey(1) & 0xFF
+        if key == 27:  # ESC
+            self.parar()
+        elif key == ord('h') or key == ord('H'):
+            self.mostrar_historico = not self.mostrar_historico
+            print(f"   Histórico: {'ON' if self.mostrar_historico else 'OFF'}")
+        elif key == ord('+') or key == ord('='):
+            self.zoom_level = min(self.zoom_level + 0.1, 3.0)
+            print(f"   Zoom: {self.zoom_level:.1f}x")
+        elif key == ord('-') or key == ord('_'):
+            self.zoom_level = max(self.zoom_level - 0.1, 0.5)
+            print(f"   Zoom: {self.zoom_level:.1f}x")
+        elif key == ord('r') or key == ord('R'):
+            self.zoom_level = 1.0
+            print(f"   Zoom resetado: {self.zoom_level:.1f}x")
+
+    def _desenhar_hud(self, img):
+        """Desenha HUD com informações"""
+        y_offset = 30
+
+        # Fundo semi-transparente para HUD
+        overlay = img.copy()
+        cv2.rectangle(overlay, (10, 10), (400, 180), (0, 0, 0), -1)
+        cv2.addWeighted(overlay, 0.7, img, 0.3, 0, img)
+
+        # Informações
+        info_lines = [
+            f"Camera Virtual - Debug ao Vivo",
+            f"Posicao: ({int(self.camera.pos_x) if self.camera.pos_x else '?'}, {int(self.camera.pos_y) if self.camera.pos_y else '?'})",
+            f"Campo de visao: {self.camera.max_clique_tiles} tiles ({self.camera.max_clique_pixels}px)",
+            f"Movimentos desde GPS: {self.camera.movimentos_desde_gps}/{self.camera.max_movimentos_sem_gps}",
+            f"Historico: {len(self.historico_posicoes)} posicoes",
+            f"Zoom: {self.zoom_level:.1f}x"
+        ]
+
+        for i, line in enumerate(info_lines):
+            cv2.putText(
+                img,
+                line,
+                (20, y_offset + i * 25),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (255, 255, 255),
+                1,
+                cv2.LINE_AA
+            )
+
+    def _aplicar_zoom(self, img):
+        """Aplica zoom centralizado na câmera"""
+        if self.camera.pos_x is None:
+            return img
+
+        # Centro do zoom = posição da câmera
+        cx = int(self.camera.pos_x)
+        cy = int(self.camera.pos_y)
+
+        # Tamanho da janela após zoom
+        h, w = img.shape[:2]
+        new_w = int(w / self.zoom_level)
+        new_h = int(h / self.zoom_level)
+
+        # Calcular região para recortar (centralizada na câmera)
+        x1 = max(0, cx - new_w // 2)
+        y1 = max(0, cy - new_h // 2)
+        x2 = min(w, x1 + new_w)
+        y2 = min(h, y1 + new_h)
+
+        # Ajustar se bateu nas bordas
+        if x2 - x1 < new_w:
+            x1 = max(0, x2 - new_w)
+        if y2 - y1 < new_h:
+            y1 = max(0, y2 - new_h)
+
+        # Recortar e redimensionar
+        cropped = img[y1:y2, x1:x2]
+        zoomed = cv2.resize(cropped, (w, h), interpolation=cv2.INTER_LINEAR)
+
+        return zoomed
+
+
 # ============================================================================
 # EXEMPLO DE USO
 # ============================================================================
 
 if __name__ == "__main__":
     import sys
-    sys.path.append('.')
+    import os
+    # Adicionar diretório pai ao path
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     from gps_ncc_realtime import GPSRealtimeNCC
 
     print("=" * 70)
-    print("🎥 TESTE DA CÂMERA VIRTUAL")
+    print("🎥 TESTE DA CÂMERA VIRTUAL COM VISUALIZAÇÃO AO VIVO")
     print("=" * 70)
 
     # 1. Inicializar GPS
@@ -413,7 +652,25 @@ if __name__ == "__main__":
         print("❌ Falha ao inicializar posição")
         exit(1)
 
-    # 4. Teste 1: Navegar para um ponto próximo (2 tiles)
+    # 4. Criar visualizador
+    try:
+        # Procurar mapa no diretório pai
+        mapa_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'MINIMAPA CERTOPRETO.png')
+        visualizador = VisualizadorCameraVirtual(camera, mapa_path)
+        visualizador.iniciar()
+        print("\n✅ Visualizador ao vivo ativado!")
+        print("   Você verá a câmera se mover no mapa em tempo real!\n")
+    except FileNotFoundError as e:
+        print(f"⚠️ Visualizador não disponível: {e}")
+        print("   Continuando sem visualização...\n")
+        visualizador = None
+
+    # 5. Atualizar visualizador inicial
+    if visualizador:
+        visualizador.atualizar()
+        time.sleep(2)
+
+    # 6. Teste 1: Navegar para um ponto próximo (2 tiles)
     print("\n" + "=" * 70)
     print("TESTE 1: Navegar 2 tiles para a direita")
     print("=" * 70)
@@ -421,36 +678,113 @@ if __name__ == "__main__":
     destino_x = camera.pos_x + (2 * 32)  # 2 tiles = 64 pixels
     destino_y = camera.pos_y
 
-    resultado = camera.navegar_para(destino_x, destino_y)
-    print(f"\nResultado: {resultado}")
-
-    time.sleep(3)
-
-    # 5. Teste 2: Navegar para um ponto mais longe (4 tiles)
-    print("\n" + "=" * 70)
-    print("TESTE 2: Navegar 4 tiles para cima")
-    print("=" * 70)
-
-    destino_x = camera.pos_x
-    destino_y = camera.pos_y - (4 * 32)  # 4 tiles = 128 pixels (cima = negativo)
+    # Mostrar destino no visualizador
+    if visualizador:
+        visualizador.atualizar(destino=(destino_x, destino_y))
+        time.sleep(1)
 
     resultado = camera.navegar_para(destino_x, destino_y)
     print(f"\nResultado: {resultado}")
 
-    time.sleep(3)
+    # Atualizar visualizador com nova posição
+    if visualizador:
+        for _ in range(30):  # Loop para ver animação
+            visualizador.atualizar()
+            time.sleep(0.1)
+            if not visualizador.rodando:
+                break
 
-    # 6. Teste 3: Tentar navegar MUITO longe (deve falhar)
-    print("\n" + "=" * 70)
-    print("TESTE 3: Tentar navegar 10 tiles (deve falhar)")
-    print("=" * 70)
+    time.sleep(2)
 
-    destino_x = camera.pos_x + (10 * 32)  # 10 tiles = 320 pixels (muito longe!)
-    destino_y = camera.pos_y
+    # 7. Teste 2: Navegar para um ponto mais longe (4 tiles)
+    if visualizador and visualizador.rodando:
+        print("\n" + "=" * 70)
+        print("TESTE 2: Navegar 4 tiles para cima")
+        print("=" * 70)
 
-    resultado = camera.navegar_para(destino_x, destino_y)
-    print(f"\nResultado: {resultado}")
+        destino_x = camera.pos_x
+        destino_y = camera.pos_y - (4 * 32)  # 4 tiles = 128 pixels (cima = negativo)
 
-    # 7. Estatísticas
+        # Mostrar destino no visualizador
+        visualizador.atualizar(destino=(destino_x, destino_y))
+        time.sleep(1)
+
+        resultado = camera.navegar_para(destino_x, destino_y)
+        print(f"\nResultado: {resultado}")
+
+        # Atualizar visualizador
+        for _ in range(30):
+            visualizador.atualizar()
+            time.sleep(0.1)
+            if not visualizador.rodando:
+                break
+
+        time.sleep(2)
+
+    # 8. Teste 3: Movimento em quadrado (para ver histórico)
+    if visualizador and visualizador.rodando:
+        print("\n" + "=" * 70)
+        print("TESTE 3: Movimento em quadrado (3x3 tiles)")
+        print("=" * 70)
+
+        # Criar path em quadrado
+        lado = 3 * 32  # 3 tiles
+        pos_inicial_x = camera.pos_x
+        pos_inicial_y = camera.pos_y
+
+        path_quadrado = [
+            (pos_inicial_x + lado, pos_inicial_y),        # Direita
+            (pos_inicial_x + lado, pos_inicial_y + lado), # Baixo
+            (pos_inicial_x, pos_inicial_y + lado),        # Esquerda
+            (pos_inicial_x, pos_inicial_y),               # Cima (volta ao início)
+        ]
+
+        for i, (dest_x, dest_y) in enumerate(path_quadrado):
+            print(f"\n   Waypoint {i+1}/4...")
+
+            # Mostrar destino
+            visualizador.atualizar(destino=(dest_x, dest_y))
+            time.sleep(0.5)
+
+            # Navegar
+            resultado = camera.navegar_para(dest_x, dest_y)
+
+            # Atualizar visualizador
+            for _ in range(20):
+                visualizador.atualizar()
+                time.sleep(0.1)
+                if not visualizador.rodando:
+                    break
+
+            if not visualizador.rodando:
+                break
+
+            time.sleep(1)
+
+    # 9. Teste 4: Tentar navegar MUITO longe (deve falhar)
+    if visualizador and visualizador.rodando:
+        print("\n" + "=" * 70)
+        print("TESTE 4: Tentar navegar 10 tiles (MUITO LONGE - deve falhar!)")
+        print("=" * 70)
+
+        destino_x = camera.pos_x + (10 * 32)  # 10 tiles = 320 pixels (muito longe!)
+        destino_y = camera.pos_y
+
+        # Mostrar destino (linha vermelha = fora do alcance)
+        visualizador.atualizar(destino=(destino_x, destino_y))
+        time.sleep(2)
+
+        resultado = camera.navegar_para(destino_x, destino_y)
+        print(f"\nResultado: {resultado}")
+
+        # Atualizar visualizador
+        for _ in range(20):
+            visualizador.atualizar()
+            time.sleep(0.1)
+            if not visualizador.rodando:
+                break
+
+    # 10. Estatísticas
     print("\n" + "=" * 70)
     print("📊 ESTATÍSTICAS DE ERRO")
     print("=" * 70)
@@ -463,4 +797,16 @@ if __name__ == "__main__":
     else:
         print("Nenhuma correção GPS realizada ainda")
 
-    print("\n✅ Teste concluído!")
+    # 11. Manter visualizador aberto
+    if visualizador and visualizador.rodando:
+        print("\n" + "=" * 70)
+        print("✅ Teste concluído! Visualizador permanece aberto.")
+        print("   Pressione ESC na janela para fechar.")
+        print("=" * 70)
+
+        # Loop até usuário fechar
+        while visualizador.rodando:
+            visualizador.atualizar()
+            time.sleep(0.05)
+    else:
+        print("\n✅ Teste concluído!")
