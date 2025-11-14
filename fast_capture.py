@@ -32,6 +32,11 @@ class FastCapture:
         self.preferred_method = preferred_method
         self.active_method = None
 
+        # Extrair serial do device (para scrcpy --serial)
+        self.device_serial = None
+        if device is not None and hasattr(device, 'serial'):
+            self.device_serial = device.serial
+
         # Scrcpy vars
         self.scrcpy_process = None
         self.ffmpeg_process = None
@@ -86,7 +91,7 @@ class FastCapture:
 
         cmd = [
             'scrcpy',
-            '--no-display',
+            '--no-playback',  # Novo parâmetro no scrcpy 3.x (era --no-display)
             '--record=-',
             '--video-codec=h264',
             '--max-fps=30',
@@ -95,7 +100,12 @@ class FastCapture:
             '--power-off-on-close=false'
         ]
 
-        print("🚀 Iniciando scrcpy em background...")
+        # Adicionar serial do device se disponível (importante quando há múltiplos devices)
+        if self.device_serial:
+            cmd.extend(['--serial', self.device_serial])
+            print(f"🚀 Iniciando scrcpy em background (device: {self.device_serial})...")
+        else:
+            print("🚀 Iniciando scrcpy em background...")
 
         try:
             # Iniciar scrcpy

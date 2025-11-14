@@ -1,7 +1,7 @@
 """
 SCRCPY CAPTURE - Captura de tela rápida via scrcpy
 
-Usa scrcpy --no-display para streaming de vídeo em background
+Usa scrcpy --no-playback para streaming de vídeo em background
 ~30-60 FPS com latência de 30-50ms (20x mais rápido que ADB screencap)
 """
 
@@ -47,7 +47,7 @@ class ScrcpyCapture:
         # Comando scrcpy
         cmd = [
             'scrcpy',
-            '--no-display',              # Sem janela visual
+            '--no-playback',             # Sem janela visual (scrcpy 3.x+, era --no-display)
             '--record=-',                # Output para stdout
             '--video-codec=h264',        # Codec H264
             f'--max-fps={self.max_fps}', # Limitar FPS
