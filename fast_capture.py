@@ -89,15 +89,15 @@ class FastCapture:
             print("⚠️ Scrcpy já está rodando")
             return True
 
+        # Comando scrcpy minimalista para compatibilidade com scrcpy 3.3.3
         cmd = [
             'scrcpy',
-            '--no-playback',  # Novo parâmetro no scrcpy 3.x (era --no-display)
-            '--record=-',
-            '--video-codec=h264',
-            '--max-fps=30',
-            '--video-bit-rate=2M',  # Scrcpy 3.x usa --video-bit-rate (era --bit-rate)
-            '--no-audio',
-            '--power-off-on-close=false'
+            '--no-playback',             # Sem janela visual (scrcpy 3.x+)
+            '--record=-',                # Output para stdout
+            '--video-codec=h264',        # Codec H264
+            '--max-fps=30',              # Limitar FPS
+            '--video-bit-rate=2M',       # Bitrate do vídeo (scrcpy 3.x+)
+            '--no-audio'                 # Sem áudio
         ]
 
         # Adicionar serial do device se disponível (importante quando há múltiplos devices)
