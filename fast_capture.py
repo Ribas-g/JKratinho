@@ -89,12 +89,12 @@ class FastCapture:
             print("⚠️ Scrcpy já está rodando")
             return True
 
-        # Comando scrcpy minimalista para compatibilidade com scrcpy 3.3.3
+        # Comando scrcpy - tentar com mp4 que é mais compatível com ffmpeg
         cmd = [
             'scrcpy',
             '--no-playback',             # Sem janela visual (scrcpy 3.x+)
             '--record=-',                # Output para stdout
-            '--record-format=mkv',       # Formato obrigatório para stdout no scrcpy 3.3.3
+            '--record-format=mp4',       # MP4 é mais compatível que MKV
             '--video-codec=h264',        # Codec H264
             '--max-fps=30',              # Limitar FPS
             '--video-bit-rate=2M',       # Bitrate do vídeo (scrcpy 3.x+)
@@ -156,13 +156,28 @@ class FastCapture:
         """Loop de captura scrcpy"""
         print("🔧 Iniciando decodificação ffmpeg...")
 
+        # Dar tempo ao scrcpy iniciar
+        time.sleep(1.0)
+
+        # Verificar se scrcpy ainda está rodando
+        if self.scrcpy_process.poll() is not None:
+            stderr = self.scrcpy_process.stderr.read().decode(errors='ignore')
+            print(f"❌ Scrcpy morreu antes do ffmpeg! Stderr:\n{stderr}")
+            return
+
+        print("✅ Scrcpy ainda rodando, iniciando ffmpeg...")
+
         ffmpeg_cmd = [
             'ffmpeg',
-            '-i', 'pipe:0',
-            '-f', 'image2pipe',
-            '-pix_fmt', 'bgr24',
-            '-vcodec', 'rawvideo',
-            '-'
+            '-fflags', 'nobuffer',        # Sem buffering
+            '-flags', 'low_delay',        # Baixa latência
+            '-probesize', '32',           # Probe mínimo
+            '-analyzeduration', '0',      # Sem análise
+            '-i', 'pipe:0',               # Input do pipe
+            '-f', 'image2pipe',           # Output como sequência de imagens
+            '-pix_fmt', 'bgr24',          # Formato BGR24 (OpenCV)
+            '-vcodec', 'rawvideo',        # Raw video output
+            '-'                           # Output para stdout
         ]
 
         try:
