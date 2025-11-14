@@ -89,14 +89,14 @@ class FastCapture:
             print("⚠️ Scrcpy já está rodando")
             return True
 
-        # Comando scrcpy 2.4 (muito mais simples e funcional que 3.x!)
+        # Comando scrcpy 2.4 (parâmetros corretos!)
         cmd = [
             'scrcpy',
-            '--no-display',              # Sem janela visual (scrcpy 2.x)
+            '--no-playback',             # Sem janela visual (mesmo na 2.4 já era --no-playback)
             '--record=-',                # Output para stdout (RAW H264!)
-            '--codec=h264',              # Codec H264 (scrcpy 2.x)
+            '--video-codec=h264',        # Codec H264 (2.4 usa --video-codec)
             '--max-fps=30',              # Limitar FPS
-            '--bit-rate=2M',             # Bitrate (scrcpy 2.x)
+            '--bit-rate=2M',             # Bitrate
             '--no-audio'                 # Sem áudio
         ]
 
