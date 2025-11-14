@@ -154,6 +154,8 @@ class FastCapture:
 
     def _scrcpy_loop(self):
         """Loop de captura scrcpy"""
+        print("🔧 Iniciando decodificação ffmpeg...")
+
         ffmpeg_cmd = [
             'ffmpeg',
             '-i', 'pipe:0',
@@ -168,7 +170,7 @@ class FastCapture:
                 ffmpeg_cmd,
                 stdin=self.scrcpy_process.stdout,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
+                stderr=subprocess.PIPE,  # Mudado de DEVNULL para PIPE para debug
                 bufsize=0
             )
 
@@ -176,11 +178,22 @@ class FastCapture:
             width, height = 1600, 900
             frame_size = width * height * 3
 
+            print(f"📐 Aguardando frames {width}x{height} ({frame_size} bytes cada)...")
+            frames_recebidos = 0
+
             while self.running:
                 try:
                     raw_frame = self.ffmpeg_process.stdout.read(frame_size)
 
+                    if frames_recebidos == 0 and len(raw_frame) > 0:
+                        print(f"✅ Primeiro frame recebido! ({len(raw_frame)} bytes)")
+
                     if len(raw_frame) != frame_size:
+                        # Verificar se ffmpeg teve erro
+                        if self.ffmpeg_process.poll() is not None:
+                            stderr = self.ffmpeg_process.stderr.read().decode(errors='ignore')
+                            print(f"❌ FFmpeg morreu! Erro: {stderr[-500:]}")  # Últimos 500 chars
+                            break
                         continue
 
                     frame = np.frombuffer(raw_frame, dtype=np.uint8)
@@ -188,6 +201,7 @@ class FastCapture:
 
                     self.last_frame = frame
                     self.last_frame_time = time.time()
+                    frames_recebidos += 1
 
                     # Atualizar queue
                     try:
