@@ -303,14 +303,29 @@ class FarmIntegrado:
         print("   Q: Sair e voltar para menu")
         print("=" * 70)
 
+        # GPS INICIAL: Atualizar mapa virtual com posição atual
+        if self.farm_bot.usar_mapa_virtual:
+            print("\n📡 Obtendo posição GPS inicial para mapa virtual...")
+            try:
+                pos = self.gps.get_current_position(keep_map_open=False, verbose=False)
+                if pos and 'x' in pos and 'y' in pos:
+                    self.farm_bot.atualizar_posicao_gps(pos['x'], pos['y'])
+                    print(f"   ✅ Posição inicial: ({pos['x']}, {pos['y']})")
+                else:
+                    print("   ⚠️ GPS inicial falhou, mapa virtual sem posição")
+            except Exception as e:
+                print(f"   ⚠️ Erro ao obter GPS inicial: {e}")
+
         self.running = True
         self.farm_bot.bot_active = True
 
         frame_count = 0
         last_mob_check = time.time()
         last_heartbeat = time.time()
+        last_gps_check = time.time()  # Controle de recalibração GPS
         check_interval = 5.0  # Verificar área a cada 5 segundos
         heartbeat_interval = 30.0  # Log de status a cada 30 segundos
+        gps_check_interval = 60.0  # Verificar GPS a cada 60 segundos
         failed_captures = 0
         max_failed_captures = 10  # Parar após 10 falhas consecutivas
 
@@ -321,6 +336,21 @@ class FarmIntegrado:
                 if (current_time - last_heartbeat) >= heartbeat_interval:
                     print(f"\n💚 [Heartbeat] Frame {frame_count}, Bot ativo: {self.farm_bot.bot_active}")
                     last_heartbeat = current_time
+
+                # GPS RECALIBRAÇÃO: Verificar se precisa atualizar posição virtual
+                if self.farm_bot.usar_mapa_virtual and (current_time - last_gps_check) >= gps_check_interval:
+                    if self.farm_bot.precisa_gps_recalibracao():
+                        print("\n🔄 GPS recalibração necessária...")
+                        try:
+                            pos = self.gps.get_current_position(keep_map_open=False, verbose=False)
+                            if pos and 'x' in pos and 'y' in pos:
+                                self.farm_bot.atualizar_posicao_gps(pos['x'], pos['y'])
+                                print(f"   ✅ Posição atualizada: ({pos['x']}, {pos['y']})")
+                            else:
+                                print("   ⚠️ GPS recalibração falhou")
+                        except Exception as e:
+                            print(f"   ⚠️ Erro na recalibração GPS: {e}")
+                    last_gps_check = current_time
 
                 # Processar frame de farm
                 try:
