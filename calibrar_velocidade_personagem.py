@@ -17,6 +17,8 @@ import time
 import json
 from pathlib import Path
 import sys
+import random
+import math
 
 # Importar GPS
 sys.path.append('.')
@@ -29,6 +31,9 @@ class CalibradorVelocidade:
         self.gps = GPSRealtimeNCC()
         # Usar device do GPS (já conectado)
         self.device = self.gps.device
+
+        # Carregar matriz walkable para validar destinos
+        self.carregar_matriz_walkable()
 
         # Região onde procurar linha verde (em torno do personagem)
         # O personagem fica no centro da tela (800, 450) em 1600x900
@@ -53,6 +58,95 @@ class CalibradorVelocidade:
 
         # Resultados
         self.medicoes = []
+
+        # Posição do jogador (será setada por GPS)
+        self.player_x = None
+        self.player_y = None
+
+    def carregar_matriz_walkable(self):
+        """Carrega matriz walkable para validar destinos"""
+        try:
+            dados = np.load('FARM/mapa_mundo_processado.npz')
+            self.matriz_walkable = dados['walkable']
+            self.mundo_largura = dados['dimensoes'][0]
+            self.mundo_altura = dados['dimensoes'][1]
+            print("   ✅ Matriz walkable carregada!")
+        except FileNotFoundError:
+            print("   ⚠️ Matriz walkable não encontrada!")
+            print("   Execute: python processar_mapa_mundo.py")
+            print("   Calibração continuará sem validação de destinos")
+            self.matriz_walkable = None
+
+    def converter_tela_para_mundo(self, tela_x, tela_y):
+        """Converte coordenadas da tela para coordenadas do mundo"""
+        if self.player_x is None or self.player_y is None:
+            return None, None
+
+        offset_x = tela_x - self.centro_x
+        offset_y = tela_y - self.centro_y
+
+        mundo_x = self.player_x + offset_x
+        mundo_y = self.player_y + offset_y
+
+        return mundo_x, mundo_y
+
+    def validar_destino(self, mundo_x, mundo_y):
+        """Valida se destino é walkable"""
+        if self.matriz_walkable is None:
+            return True  # Se não tem matriz, aceitar qualquer destino
+
+        # Verificar limites
+        if mundo_x < 0 or mundo_x >= self.mundo_largura:
+            return False
+        if mundo_y < 0 or mundo_y >= self.mundo_altura:
+            return False
+
+        # Verificar walkability
+        return self.matriz_walkable[int(mundo_y), int(mundo_x)] == 1
+
+    def encontrar_destino_valido(self, distancia_tiles, max_tentativas=50):
+        """
+        Encontra um destino válido (walkable) a uma certa distância
+
+        Args:
+            distancia_tiles: distância desejada em tiles
+            max_tentativas: máximo de tentativas para encontrar destino válido
+
+        Returns:
+            (tela_x, tela_y) ou None se não encontrar
+        """
+        distancia_px = distancia_tiles * self.pixels_por_tile
+
+        for _ in range(max_tentativas):
+            # Ângulo aleatório
+            angulo = random.uniform(0, 2 * math.pi)
+
+            # Calcular offset
+            offset_x = int(distancia_px * math.cos(angulo))
+            offset_y = int(distancia_px * math.sin(angulo))
+
+            # Coordenadas na tela
+            tela_x = self.centro_x + offset_x
+            tela_y = self.centro_y + offset_y
+
+            # Garantir que está dentro da tela
+            if tela_x < 100 or tela_x > 1500:
+                continue
+            if tela_y < 100 or tela_y > 800:
+                continue
+
+            # Converter para mundo e validar
+            mundo_x, mundo_y = self.converter_tela_para_mundo(tela_x, tela_y)
+
+            if mundo_x is None:
+                # Sem GPS ainda, aceitar qualquer destino na tela
+                return tela_x, tela_y
+
+            if self.validar_destino(mundo_x, mundo_y):
+                return tela_x, tela_y
+
+        # Não encontrou destino válido
+        return None
 
     def capturar_tela(self):
         """Captura screenshot do dispositivo"""
@@ -99,9 +193,6 @@ class CalibradorVelocidade:
         Mede tempo de movimento até destino
         Retorna tempo em segundos ou None se falhou
         """
-        print(f"\n📍 Testando movimento de {distancia_tiles} tiles...")
-        print(f"   Destino: ({destino_x}, {destino_y})")
-
         # 1. Capturar tela antes do movimento (para confirmar que não há linha verde)
         img_antes = self.capturar_tela()
         if img_antes is None:
@@ -185,6 +276,11 @@ class CalibradorVelocidade:
 
             pos_inicial_x = resultado['x']
             pos_inicial_y = resultado['y']
+
+            # Salvar posição do jogador para validação
+            self.player_x = pos_inicial_x
+            self.player_y = pos_inicial_y
+
             print(f"   ✅ Posição inicial: ({pos_inicial_x}, {pos_inicial_y})")
             print(f"   🗺️ Zona: {resultado.get('zone', 'Desconhecida')}")
         except Exception as e:
@@ -197,20 +293,28 @@ class CalibradorVelocidade:
         print("=" * 70)
 
         for i, distancia_tiles in enumerate(self.distancias_tiles):
-            # Calcular destino em pixels (ir para direita)
-            offset_pixels = distancia_tiles * self.pixels_por_tile
-            destino_x = self.centro_x + offset_pixels
-            destino_y = self.centro_y
-
-            # Garantir que destino está dentro da tela
-            if destino_x > 1500:
-                destino_x = 1500
-
             # Fazer 3 medições para cada distância
             medicoes_distancia = []
 
             for tentativa in range(3):
-                print(f"\n   Tentativa {tentativa + 1}/3:")
+                print(f"\n   Tentativa {tentativa + 1}/3 para {distancia_tiles} tiles:")
+
+                # Encontrar destino válido (walkable)
+                destino = self.encontrar_destino_valido(distancia_tiles)
+
+                if destino is None:
+                    print(f"      ❌ Não encontrou destino walkable válido para {distancia_tiles} tiles")
+                    continue
+
+                destino_x, destino_y = destino
+
+                # Converter para mundo para mostrar no log
+                mundo_x, mundo_y = self.converter_tela_para_mundo(destino_x, destino_y)
+                if mundo_x is not None:
+                    print(f"      📍 Destino: tela({destino_x}, {destino_y}) → mundo({mundo_x:.0f}, {mundo_y:.0f})")
+                else:
+                    print(f"      📍 Destino: ({destino_x}, {destino_y})")
+
                 duracao = self.medir_movimento(destino_x, destino_y, distancia_tiles)
 
                 if duracao is not None:
@@ -227,7 +331,7 @@ class CalibradorVelocidade:
                     print(f"      ❌ Medição falhou")
 
                 # Delay entre medições
-                time.sleep(1)
+                time.sleep(1.5)
 
             # Calcular média para esta distância
             if medicoes_distancia:
