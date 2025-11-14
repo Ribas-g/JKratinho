@@ -138,23 +138,28 @@ class CalibradorVelocidade:
         Converte coordenadas mundo → tela do mapa (COM MAPA ABERTO)
 
         IMPORTANTE: Player SEMPRE no centro do mapa.
-        Calcula delta e aplica escala.
+        Escala representa pixels_mapa por TILE, não por pixel!
 
         Args:
-            x_mundo, y_mundo: Destino no mapa mundo
-            x_atual, y_atual: Posição atual do player no mapa mundo
+            x_mundo, y_mundo: Destino no mapa mundo (em pixels)
+            x_atual, y_atual: Posição atual do player no mapa mundo (em pixels)
 
         Returns:
             (x_tela, y_tela): Coordenadas para clicar no mapa
         """
-        # Delta (quanto precisa andar)
+        # Delta em pixels do mundo
         delta_x = x_mundo - x_atual
         delta_y = y_mundo - y_atual
 
-        # Aplicar escala e somar ao centro
+        # Converter pixels → tiles → pixels do mapa
+        # escala_x = pixels no mapa por TILE
+        # Portanto: pixels_mundo / 32 * escala = pixels_mapa
+        delta_mapa_x = (delta_x / self.pixels_por_tile) * self.escala_x
+        delta_mapa_y = (delta_y / self.pixels_por_tile) * self.escala_y
+
         # Player está SEMPRE no centro do mapa
-        x_tela = int(self.centro_mapa_x + delta_x * self.escala_x)
-        y_tela = int(self.centro_mapa_y + delta_y * self.escala_y)
+        x_tela = int(self.centro_mapa_x + delta_mapa_x)
+        y_tela = int(self.centro_mapa_y + delta_mapa_y)
 
         return (x_tela, y_tela)
 
