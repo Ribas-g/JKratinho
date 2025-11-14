@@ -166,7 +166,24 @@ class CalibradorManual:
             if self.detectar_linha_verde(img):
                 tempo_inicio = time.time()
                 delay_inicio = tempo_inicio - tempo_click
+
+                # SALVAR SCREENSHOT DO INÍCIO (linha verde detectada!)
+                timestamp = time.strftime('%H%M%S')
+                filename_inicio = f'DEBUG_INICIO_{tiles}tiles_{direcao}_{timestamp}.png'
+
+                # Adicionar texto na imagem para debug
+                img_debug = img.copy()
+                cv2.putText(img_debug, f'INICIO - {tiles} tiles {direcao}', (50, 50),
+                           cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                cv2.putText(img_debug, f'Delay: {delay_inicio:.3f}s', (50, 100),
+                           cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                cv2.putText(img_debug, f'Tempo: {timestamp}', (50, 150),
+                           cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+
+                cv2.imwrite(filename_inicio, img_debug)
+
                 print(f"   ✅ Movimento iniciou ({delay_inicio:.3f}s após click)")
+                print(f"   📸 Screenshot início: {filename_inicio}")
                 break
             time.sleep(0.01)  # 10ms polling = 100 FPS!
 
@@ -185,7 +202,27 @@ class CalibradorManual:
             if not self.detectar_linha_verde(img):
                 tempo_fim = time.time()
                 duracao = tempo_fim - tempo_inicio
+
+                # SALVAR SCREENSHOT DO FIM (linha verde sumiu!)
+                timestamp = time.strftime('%H%M%S')
+                filename_fim = f'DEBUG_FIM_{tiles}tiles_{direcao}_{timestamp}.png'
+
+                # Adicionar texto na imagem para debug
+                img_debug = img.copy()
+                velocidade_temp = (tiles * self.pixels_por_tile) / duracao
+                cv2.putText(img_debug, f'FIM - {tiles} tiles {direcao}', (50, 50),
+                           cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                cv2.putText(img_debug, f'Duracao: {duracao:.3f}s', (50, 100),
+                           cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                cv2.putText(img_debug, f'Velocidade: {velocidade_temp:.1f} px/s', (50, 150),
+                           cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                cv2.putText(img_debug, f'Tempo: {timestamp}', (50, 200),
+                           cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+
+                cv2.imwrite(filename_fim, img_debug)
+
                 print(f"   ✅ Movimento completo em {duracao:.3f}s")
+                print(f"   📸 Screenshot fim: {filename_fim}")
                 break
             time.sleep(0.01)  # 10ms polling = 100 FPS!
 
