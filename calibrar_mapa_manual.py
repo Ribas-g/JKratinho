@@ -107,15 +107,19 @@ class CalibradorManual:
 
         return (mapa_x, mapa_y)
 
-    def detectar_linha_verde(self, img):
+    def detectar_linha_verde(self, img, retornar_contagem=False):
         """
         Detecta se há linha verde no mapa
 
+        Args:
+            img: imagem capturada
+            retornar_contagem: se True, retorna (bool, pixels_verdes)
+
         Returns:
-            bool: True se detectou linha verde
+            bool ou (bool, int): True se detectou linha verde, opcionalmente com contagem
         """
         if img is None:
-            return False
+            return (False, 0) if retornar_contagem else False
 
         # Converter para HSV
         hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
@@ -131,7 +135,11 @@ class CalibradorManual:
         pixels_verdes = cv2.countNonZero(mask)
 
         # Se encontrou pelo menos 100 pixels verdes, tem linha
-        return pixels_verdes > 100
+        tem_linha = pixels_verdes > 100
+
+        if retornar_contagem:
+            return tem_linha, pixels_verdes
+        return tem_linha
 
     def medir_velocidade(self, direcao, tiles):
         """
@@ -172,11 +180,17 @@ class CalibradorManual:
         # Aguardar linha verde sumir (fim do movimento)
         tempo_fim = None
         timeout = time.time() + 15.0
+        ultima_contagem = 0
 
         print(f"   ⏱️ Aguardando movimento completar...")
         while time.time() < timeout:
             img = self.capturar_tela()
-            if not self.detectar_linha_verde(img):
+            tem_linha, pixels_verdes = self.detectar_linha_verde(img, retornar_contagem=True)
+            ultima_contagem = pixels_verdes
+
+            # CRITÉRIO MAIS RIGOROSO: linha verde sumiu = MENOS de 10 pixels verdes
+            # (antes era <100, agora é <10 para ser mais preciso)
+            if pixels_verdes < 10:
                 tempo_fim = time.time()
                 duracao = tempo_fim - tempo_inicio
 
@@ -193,12 +207,15 @@ class CalibradorManual:
                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
                 cv2.putText(img_debug, f'Velocidade: {velocidade_temp:.1f} px/s', (50, 150),
                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-                cv2.putText(img_debug, f'Tempo: {timestamp}', (50, 200),
+                cv2.putText(img_debug, f'Pixels verdes: {pixels_verdes}', (50, 200),
+                           cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                cv2.putText(img_debug, f'Tempo: {timestamp}', (50, 250),
                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
 
                 cv2.imwrite(filename_fim, img_debug)
 
                 print(f"   ✅ Movimento completo em {duracao:.3f}s")
+                print(f"   📊 Pixels verdes no fim: {pixels_verdes}")
                 print(f"   📸 Screenshot fim: {filename_fim}")
                 break
             time.sleep(0.01)  # 10ms polling = 100 FPS!
@@ -230,6 +247,17 @@ class CalibradorManual:
         print("=" * 70)
         print("🗺️ CALIBRADOR MANUAL DE ESCALA DO MAPA")
         print("=" * 70)
+
+        # Mostrar método de captura ativo
+        metodo = self.fast_capture.active_method
+        latencia = self.fast_capture.get_latency_estimate() * 1000
+        print(f"\n📸 CAPTURA ATIVA: {metodo.upper()}")
+        print(f"   ⚡ Latência estimada: ~{latencia:.0f}ms")
+        if metodo == 'scrcpy':
+            print(f"   ✅ Usando captura ultra-rápida!")
+        else:
+            print(f"   ⚠️  Para captura 10x mais rápida, instale scrcpy")
+            print(f"   💡 Veja: INSTALL_SCRCPY_WINDOWS.md")
 
         # Abrir mapa
         print("\n📖 Abrindo mapa...")
