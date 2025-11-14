@@ -62,11 +62,15 @@ class CameraVirtual:
         self.max_movimentos_sem_gps = 5  # Corrigir a cada 5 movimentos
 
         # Campo de visão (RETÂNGULO da tela do jogo no mapa mundo)
-        # Fórmula do navegador: raio_visivel = (tela / 2) / escala
-        # FOV total = raio * 2
-        # Com escala 20.0: FOV = 1600/20 x 900/20 = 80x45 pixels
-        self.fov_largura_mapa = self.tela_largura / self.escala_x
-        self.fov_altura_mapa = self.tela_altura / self.escala_y
+        # IMPORTANTE: FOV real medido no Photoshop = 68x38 pixels (não usar escala do mapa!)
+        # A tela 1600x900 do jogo corresponde a 68x38 pixels no mapa mundo
+        # Isso porque o jogo tem mais "zoom" que o minimap
+        self.fov_largura_mapa = 68.0  # Medido no Photoshop
+        self.fov_altura_mapa = 38.0   # Medido no Photoshop
+
+        # Calcular escala do FOV (para referência)
+        self.escala_fov_x = self.tela_largura / self.fov_largura_mapa  # 1600/68 = 23.53
+        self.escala_fov_y = self.tela_altura / self.fov_altura_mapa    # 900/38 = 23.68
 
         # Histórico de erros (para debug)
         self.historico_erros = []
@@ -74,8 +78,9 @@ class CameraVirtual:
         # Imprimir informações de inicialização
         print("🎥 Câmera Virtual inicializada!")
         print(f"   Tela do jogo: {self.tela_largura}x{self.tela_altura}px")
-        print(f"   Escala mapa: {self.escala_x:.1f}x{self.escala_y:.1f}")
-        print(f"   FOV (mapa mundo): {self.fov_largura_mapa:.1f}x{self.fov_altura_mapa:.1f}px")
+        print(f"   Escala mapa (clicar): {self.escala_x:.1f}x{self.escala_y:.1f}")
+        print(f"   Escala FOV (visão): {self.escala_fov_x:.1f}x{self.escala_fov_y:.1f}")
+        print(f"   FOV (mapa mundo): {self.fov_largura_mapa:.0f}x{self.fov_altura_mapa:.0f}px")
         print(f"   GPS a cada {self.max_movimentos_sem_gps} movimentos")
 
     def _carregar_escala_mapa(self):
