@@ -4,8 +4,8 @@
     "y": 450
   },
   "escala": {
-    "x": 20.0,
-    "y": 20.0
+    "x": 25.0,
+    "y": 25.0
   },
-  "observacoes": "Escala calibrada manualmente - 1 tile = 1.6px mundo"
+  "observacoes": "Escala calibrada via testes manuais - FOV 64×36px (16×9 tiles). 1 tile = 4px no mapa mundo. 1px mundo = 25px tela"
 }

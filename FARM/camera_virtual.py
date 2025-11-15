@@ -17,7 +17,7 @@ VANTAGENS:
 - 🗺️ Navegação fluida
 
 LIMITES:
-- Campo de visão limitado (~6 tiles ou 192 pixels do centro)
+- Campo de visão limitado (16×9 tiles = 64×36px no mapa mundo)
 - Precisa GPS periódico para evitar erro acumulado
 """
 
@@ -96,33 +96,36 @@ class CameraVirtual:
 
         except FileNotFoundError:
             # Fallback: usar escala padrão calibrada
-            # map_transform_config.json padrão usa 20.0
-            # (20 pixels no mapa = 1 tile)
+            # Escala 25.0 = FOV de 64×36px (16×9 tiles)
+            # (1 pixel mundo × 25.0 = 25 pixels tela)
             print("   ⚠️ map_transform_config.json não encontrado")
-            print("   Usando escala padrão: 20.0 (20px no mapa = 1 tile)")
-            self.escala_x = 20.0
-            self.escala_y = 20.0
+            print("   Usando escala padrão: 25.0 (FOV 64×36px)")
+            self.escala_x = 25.0
+            self.escala_y = 25.0
 
     def _carregar_config_fov(self):
         """
         Calcula FOV baseado na escala do mapa
 
-        LÓGICA CORRETA:
+        LÓGICA CORRETA (calibrada via testes manuais):
         - Tela do jogo: 1600x900px
-        - 1 tile no jogo = 100px (quadrado visível na tela)
-        - Logo: FOV = 16 tiles (horizontal) × 9 tiles (vertical)
-        - No mapa: 1 tile = escala_mapa px (do map_transform_config.json = 20.0)
-        - FOV no mapa = 16×escala x 9×escala pixels
+        - Escala: 25.0 (1px mundo → 25px tela)
+        - FOV no mundo = Tela / Escala = 1600/25.0 = 64×36px
+        - 1 tile no mundo = 4px (DESCOBERTO VIA TESTES!)
+        - Tiles visíveis = 64/4 = 16 tiles (horizontal) × 36/4 = 9 tiles (vertical)
         """
-        # Calcular tiles visíveis baseado na tela do jogo
-        self.pixels_por_tile_jogo = 100  # 1 tile = 100px na tela do jogo
-        self.tiles_visiveis_x = self.tela_largura / self.pixels_por_tile_jogo  # 1600/100 = 16 tiles
-        self.tiles_visiveis_y = self.tela_altura / self.pixels_por_tile_jogo    # 900/100 = 9 tiles
+        # Calcular FOV no mapa mundo (INVERSO da escala!)
+        # fov_mundo = tela_jogo / escala
+        self.fov_largura_mapa = self.tela_largura / self.escala_x  # 1600 / 25.0 = 64px
+        self.fov_altura_mapa = self.tela_altura / self.escala_y    # 900 / 25.0 = 36px
 
-        # Converter tiles para pixels no mapa (usando escala do mapa)
-        # pixels_no_mapa = tiles × escala_mapa
-        self.fov_largura_mapa = self.tiles_visiveis_x * self.escala_x  # 16 × escala
-        self.fov_altura_mapa = self.tiles_visiveis_y * self.escala_y   # 9 × escala
+        # Calcular tiles visíveis (1 tile no mundo = 4px - CALIBRADO!)
+        self.pixels_por_tile_mundo = 4.0  # 1 tile = 4px no mapa mundo
+        self.tiles_visiveis_x = self.fov_largura_mapa / self.pixels_por_tile_mundo  # 64/4 = 16 tiles
+        self.tiles_visiveis_y = self.fov_altura_mapa / self.pixels_por_tile_mundo   # 36/4 = 9 tiles
+
+        # 1 tile na tela do jogo (para exibição)
+        self.pixels_por_tile_jogo = 100  # 1 tile = 100px na tela do jogo
 
         # Escala do FOV é igual à escala do mapa
         self.escala_fov_x = self.escala_x
@@ -220,10 +223,11 @@ class CameraVirtual:
         1. Converter mundo → tela do jogo DIRETO
         2. Clicar no chão
 
-        ESCALA CORRETA:
-        - No jogo: 1 tile = 100px na tela
-        - No mapa: 1 tile = 11px
-        - Escala = 100px tela ÷ 11px mundo = 9.09
+        ESCALA CORRETA (calibrada via testes manuais):
+        - Tela do jogo: 1600×900px
+        - Mapa mundo: FOV = 64×36px
+        - Escala = 1600 ÷ 64 = 25.0 (1px mundo = 25px tela)
+        - 1 tile = 4px no mapa mundo
 
         Args:
             x_mundo, y_mundo: Coordenadas absolutas no mundo
@@ -241,9 +245,9 @@ class CameraVirtual:
         delta_x = x_mundo - self.pos_x
         delta_y = y_mundo - self.pos_y
 
-        # 2. Aplicar escala correta: 9.09 (100px tela ÷ 11px mundo)
+        # 2. Aplicar escala correta: 25.0 (64px mundo → 1600px tela)
         #    x_tela = centro + (delta_mundo * escala)
-        #    Com escala 9.09: 11px mundo = 100px tela (1 tile)
+        #    Com escala 25.0: 1px mundo = 25px tela
         x_tela = self.centro_x + (delta_x * self.escala_x)
         y_tela = self.centro_y + (delta_y * self.escala_y)
 
@@ -290,13 +294,14 @@ class CameraVirtual:
 
         return int(x_mundo), int(y_mundo)
 
-    def navegar_para(self, x_mundo_destino, y_mundo_destino, forcar_gps=False):
+    def navegar_para(self, x_mundo_destino, y_mundo_destino, forcar_gps=False, verificar_gps_apos=False):
         """
         Navega para um ponto no mundo usando a câmera virtual
 
         Args:
             x_mundo_destino, y_mundo_destino: Coordenadas mundo do destino
             forcar_gps: Se True, força GPS antes de navegar
+            verificar_gps_apos: Se True, faz GPS após movimento para calibração
 
         Returns:
             dict: Informações sobre a navegação
@@ -304,6 +309,10 @@ class CameraVirtual:
         # Verificar se precisa GPS
         if forcar_gps or self.movimentos_desde_gps >= self.max_movimentos_sem_gps:
             self._corrigir_posicao_gps()
+
+        # Salvar posição virtual ANTES do movimento
+        pos_virtual_antes_x = self.pos_x
+        pos_virtual_antes_y = self.pos_y
 
         # Converter destino para tela do jogo
         x_tela, y_tela, alcancavel, eh_parede = self.mundo_para_tela_jogo(
@@ -316,10 +325,10 @@ class CameraVirtual:
                 'erro': 'Posição da câmera não inicializada'
             }
 
-        # Calcular distância
-        delta_x = x_mundo_destino - self.pos_x
-        delta_y = y_mundo_destino - self.pos_y
-        distancia_px = np.sqrt(delta_x**2 + delta_y**2)
+        # Calcular distância esperada
+        delta_x_esperado = x_mundo_destino - self.pos_x
+        delta_y_esperado = y_mundo_destino - self.pos_y
+        distancia_px = np.sqrt(delta_x_esperado**2 + delta_y_esperado**2)
 
         print(f"\n🎯 Navegando via câmera virtual:")
         print(f"   De:   ({self.pos_x}, {self.pos_y})")
@@ -349,6 +358,9 @@ class CameraVirtual:
         print(f"   🖱️ Clicando em ({x_tela}, {y_tela})...")
         self.device.shell(f"input tap {x_tela} {y_tela}")
 
+        # Aguardar movimento completar
+        time.sleep(1.0)  # Dar tempo pro personagem andar
+
         # Atualizar posição virtual (dead reckoning)
         # Assumimos que o personagem VAI chegar no destino
         self.pos_x = x_mundo_destino
@@ -359,12 +371,60 @@ class CameraVirtual:
         print(f"   📍 Posição virtual atualizada: ({self.pos_x}, {self.pos_y})")
         print(f"   🔄 Movimentos desde GPS: {self.movimentos_desde_gps}/{self.max_movimentos_sem_gps}")
 
+        # VERIFICAÇÃO GPS PÓS-MOVIMENTO (para calibração)
+        delta_real_x = None
+        delta_real_y = None
+        erro_calibracao = None
+
+        if verificar_gps_apos:
+            print(f"\n📡 Verificando posição REAL via GPS...")
+            resultado_gps = self.gps.get_current_position(keep_map_open=False, verbose=False)
+
+            if resultado_gps and 'x' in resultado_gps:
+                pos_real_x = resultado_gps['x']
+                pos_real_y = resultado_gps['y']
+
+                # Calcular quanto realmente andou
+                delta_real_x = pos_real_x - pos_virtual_antes_x
+                delta_real_y = pos_real_y - pos_virtual_antes_y
+                distancia_real = np.sqrt(delta_real_x**2 + delta_real_y**2)
+
+                # Calcular erro de calibração
+                erro_calibracao_x = delta_real_x - delta_x_esperado
+                erro_calibracao_y = delta_real_y - delta_y_esperado
+                erro_calibracao = np.sqrt(erro_calibracao_x**2 + erro_calibracao_y**2)
+
+                # Atualizar posição virtual com a REAL
+                self.pos_x = pos_real_x
+                self.pos_y = pos_real_y
+                self.movimentos_desde_gps = 0
+
+                print(f"\n📊 COMPARAÇÃO VIRTUAL vs REAL:")
+                print(f"   📍 Posição ANTES: ({pos_virtual_antes_x}, {pos_virtual_antes_y})")
+                print(f"   🎯 ESPERADO andar: ({delta_x_esperado:+.1f}, {delta_y_esperado:+.1f}) = {distancia_px:.1f}px")
+                print(f"   ✅ REAL andou:     ({delta_real_x:+.1f}, {delta_real_y:+.1f}) = {distancia_real:.1f}px")
+                print(f"   📍 Posição REAL:   ({pos_real_x}, {pos_real_y})")
+                print(f"   ⚠️ ERRO calibração: {erro_calibracao:.1f}px")
+
+                # Calcular escala sugerida
+                if abs(delta_x_esperado) > 0.5:
+                    escala_sugerida_x = abs(delta_real_x / delta_x_esperado)
+                    print(f"   💡 Escala sugerida X: {escala_sugerida_x:.3f} (atual: {self.escala_x:.1f})")
+                if abs(delta_y_esperado) > 0.5:
+                    escala_sugerida_y = abs(delta_real_y / delta_y_esperado)
+                    print(f"   💡 Escala sugerida Y: {escala_sugerida_y:.3f} (atual: {self.escala_y:.1f})")
+            else:
+                print(f"   ⚠️ GPS falhou, mantendo posição virtual")
+
         return {
             'sucesso': True,
             'x_tela': x_tela,
             'y_tela': y_tela,
             'distancia_px': distancia_px,
-            'movimentos_desde_gps': self.movimentos_desde_gps
+            'movimentos_desde_gps': self.movimentos_desde_gps,
+            'delta_real_x': delta_real_x,
+            'delta_real_y': delta_real_y,
+            'erro_calibracao': erro_calibracao
         }
 
     def navegar_path(self, path_mundo, auto_gps=True):
@@ -976,10 +1036,11 @@ if __name__ == "__main__":
         print("  [H] - Toggle histórico")
         print("  [ESC] - Sair")
         print("=" * 70)
-        print("\n📐 CÁLCULO DA ESCALA CORRETA:")
-        print("   - Tela do jogo: 1 tile = 100px (grid visível)")
-        print("   - Mapa mundo: 1 tile = 20px (escala do map_transform_config.json)")
-        print("   - FOV: 16×9 tiles = 320×180px no mapa")
+        print("\n📐 ESCALA CALIBRADA (via testes manuais):")
+        print("   - Tela do jogo: 1600×900px")
+        print("   - Mapa mundo: 1 tile = 4px")
+        print("   - Escala: 25.0 (1px mundo = 25px tela)")
+        print("   - FOV: 16×9 tiles = 64×36px no mapa")
         print("=" * 70)
 
         # Estado do controle interativo
@@ -1067,7 +1128,7 @@ if __name__ == "__main__":
                 print(f"\n\n🎯 EXECUTANDO MOVIMENTO:")
                 print(f"   Direção: {direcao.upper()} {setas[direcao]}")
                 print(f"   Distância: {pixels_clique}px mundo ({pixels_clique/32:.2f} tiles)")
-                resultado = camera.navegar_para(destino_x, destino_y)
+                resultado = camera.navegar_para(destino_x, destino_y, verificar_gps_apos=True)
                 print(f"   Resultado: {'✅ SUCESSO' if resultado['sucesso'] else '❌ FALHOU'}")
                 if not resultado['sucesso']:
                     print(f"   Erro: {resultado['erro']}")
