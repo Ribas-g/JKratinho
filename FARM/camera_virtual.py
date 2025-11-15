@@ -62,18 +62,14 @@ class CameraVirtual:
         self.max_movimentos_sem_gps = 5  # Corrigir a cada 5 movimentos
 
         # Campo de visão (RETÂNGULO da tela do jogo no mapa mundo)
-        # IMPORTANTE: FOV real medido no Photoshop = 68x38 pixels (não usar escala do mapa!)
-        # A tela 1600x900 do jogo corresponde a 68x38 pixels no mapa mundo
-        # Isso porque o jogo tem mais "zoom" que o minimap
-        self.fov_largura_mapa = 68.0  # Medido no Photoshop
-        self.fov_altura_mapa = 38.0   # Medido no Photoshop
-
-        # Calcular escala do FOV (para referência)
-        self.escala_fov_x = self.tela_largura / self.fov_largura_mapa  # 1600/68 = 23.53
-        self.escala_fov_y = self.tela_altura / self.fov_altura_mapa    # 900/38 = 23.68
+        # Tentar carregar configuração salva, senão usar padrão
+        self._carregar_config_fov()
 
         # Histórico de erros (para debug)
         self.historico_erros = []
+
+        # Carregar matriz walkable para validação de paredes
+        self._carregar_matriz_walkable()
 
         # Imprimir informações de inicialização
         print("🎥 Câmera Virtual inicializada!")
@@ -104,6 +100,69 @@ class CameraVirtual:
             print("   Usando escala padrão: 5.0 (GPS 0.2x)")
             self.escala_x = 5.0
             self.escala_y = 5.0
+
+    def _carregar_config_fov(self):
+        """
+        Carrega configuração de FOV salva ou usa padrão
+        """
+        try:
+            with open('camera_virtual_config.json', 'r', encoding='utf-8') as f:
+                config = json.load(f)
+
+            self.fov_largura_mapa = config['fov_largura_mapa']
+            self.fov_altura_mapa = config['fov_altura_mapa']
+            self.escala_fov_x = config['escala_fov_x']
+            self.escala_fov_y = config['escala_fov_y']
+
+            print(f"   ✅ FOV carregado do arquivo: {self.fov_largura_mapa:.0f}x{self.fov_altura_mapa:.0f}px")
+
+        except FileNotFoundError:
+            # Valores padrão medidos no Photoshop
+            self.fov_largura_mapa = 68.0
+            self.fov_altura_mapa = 38.0
+            self.escala_fov_x = self.tela_largura / self.fov_largura_mapa  # 23.53
+            self.escala_fov_y = self.tela_altura / self.fov_altura_mapa    # 23.68
+
+            print(f"   📐 FOV padrão (Photoshop): {self.fov_largura_mapa:.0f}x{self.fov_altura_mapa:.0f}px")
+
+    def _carregar_matriz_walkable(self):
+        """
+        Carrega matriz walkable para validação de paredes
+        """
+        try:
+            dados = np.load('mapa_mundo_processado.npz')
+            self.matriz_walkable = dados['walkable']
+            self.mundo_largura = dados['dimensoes'][0]
+            self.mundo_altura = dados['dimensoes'][1]
+            print(f"   ✅ Matriz walkable carregada: {self.mundo_largura}x{self.mundo_altura}")
+        except FileNotFoundError:
+            print("   ⚠️ mapa_mundo_processado.npz não encontrado - validação de paredes desabilitada")
+            self.matriz_walkable = None
+            self.mundo_largura = None
+            self.mundo_altura = None
+
+    def validar_posicao(self, x_mundo, y_mundo):
+        """
+        Valida se posição no mundo é andável (não é parede)
+
+        Args:
+            x_mundo: coordenada X no mundo
+            y_mundo: coordenada Y no mundo
+
+        Returns:
+            bool: True se andável, False se parede ou fora do mapa
+        """
+        if self.matriz_walkable is None:
+            return True  # Sem validação, aceitar tudo
+
+        # Verificar limites
+        if x_mundo < 0 or x_mundo >= self.mundo_largura:
+            return False
+        if y_mundo < 0 or y_mundo >= self.mundo_altura:
+            return False
+
+        # Verificar walkability (matriz em [y, x])
+        return self.matriz_walkable[int(y_mundo), int(x_mundo)] == 1
 
     def inicializar_posicao(self):
         """
@@ -147,12 +206,13 @@ class CameraVirtual:
             x_mundo, y_mundo: Coordenadas absolutas no mundo
 
         Returns:
-            (x_tela, y_tela, alcancavel):
+            (x_tela, y_tela, alcancavel, eh_parede):
                 - Coordenadas na tela do jogo
                 - Bool se está dentro do campo de visão
+                - Bool se é parede (True = parede, False = andável)
         """
         if self.pos_x is None or self.pos_y is None:
-            return None, None, False
+            return None, None, False, False
 
         # 1. Calcular delta em pixels do mundo
         delta_x = x_mundo - self.pos_x
@@ -168,9 +228,15 @@ class CameraVirtual:
         half_fov_x = self.fov_largura_mapa / 2
         half_fov_y = self.fov_altura_mapa / 2
 
-        alcancavel = (abs(delta_x) <= half_fov_x and abs(delta_y) <= half_fov_y)
+        dentro_fov = (abs(delta_x) <= half_fov_x and abs(delta_y) <= half_fov_y)
 
-        return int(x_tela), int(y_tela), alcancavel
+        # 4. Verificar se é parede
+        eh_parede = not self.validar_posicao(x_mundo, y_mundo)
+
+        # Alcançável = dentro do FOV E não é parede
+        alcancavel = dentro_fov and not eh_parede
+
+        return int(x_tela), int(y_tela), alcancavel, eh_parede
 
     def tela_para_mundo(self, x_tela, y_tela):
         """
@@ -217,7 +283,7 @@ class CameraVirtual:
             self._corrigir_posicao_gps()
 
         # Converter destino para tela do jogo
-        x_tela, y_tela, alcancavel = self.mundo_para_tela_jogo(
+        x_tela, y_tela, alcancavel, eh_parede = self.mundo_para_tela_jogo(
             x_mundo_destino, y_mundo_destino
         )
 
@@ -237,12 +303,20 @@ class CameraVirtual:
         print(f"   Para: ({x_mundo_destino}, {y_mundo_destino})")
         print(f"   Distância: {distancia_px:.0f}px")
         print(f"   Clique tela: ({x_tela}, {y_tela})")
-        print(f"   Alcançável: {'✅ SIM' if alcancavel else '❌ NÃO (fora do FOV!)'}")
+
+        if eh_parede:
+            print(f"   Alcançável: ❌ NÃO (PAREDE!)")
+        elif not alcancavel:
+            print(f"   Alcançável: ❌ NÃO (fora do FOV!)")
+        else:
+            print(f"   Alcançável: ✅ SIM")
 
         if not alcancavel:
+            erro_msg = 'Destino é uma PAREDE!' if eh_parede else f'Destino fora do campo de visão (FOV: {self.fov_largura_mapa:.0f}x{self.fov_altura_mapa:.0f}px)'
             return {
                 'sucesso': False,
-                'erro': f'Destino fora do campo de visão (FOV: {self.fov_largura_mapa:.0f}x{self.fov_altura_mapa:.0f}px)',
+                'erro': erro_msg,
+                'eh_parede': eh_parede,
                 'distancia_px': distancia_px,
                 'fov_largura': self.fov_largura_mapa,
                 'fov_altura': self.fov_altura_mapa
@@ -547,12 +621,13 @@ class VisualizadorCameraVirtual:
         if self.proximo_destino:
             dest_x, dest_y = self.proximo_destino
 
-            # Verificar se destino está dentro do campo de visão
-            x_tela, y_tela, alcancavel = self.camera.mundo_para_tela_jogo(dest_x, dest_y)
+            # Verificar se destino está dentro do campo de visão E se é parede
+            x_tela, y_tela, alcancavel, eh_parede = self.camera.mundo_para_tela_jogo(dest_x, dest_y)
 
             # Linha do player ao destino
             if self.camera.pos_x is not None:
-                cor_linha = self.cor_destino if alcancavel else (0, 0, 255)  # Verde se OK, vermelho se longe
+                # Vermelho se parede OU fora do FOV, verde se OK
+                cor_linha = self.cor_destino if alcancavel else (0, 0, 255)
                 cv2.line(
                     img,
                     (int(self.camera.pos_x), int(self.camera.pos_y)),
@@ -562,21 +637,32 @@ class VisualizadorCameraVirtual:
                     cv2.LINE_AA
                 )
 
-            # Círculo no destino
-            cv2.circle(img, (int(dest_x), int(dest_y)), 6, self.cor_destino, -1)
+            # Círculo no destino (vermelho se parede, verde se OK)
+            cor_circulo = (0, 0, 255) if eh_parede else self.cor_destino
+            cv2.circle(img, (int(dest_x), int(dest_y)), 6, cor_circulo, -1)
 
-            # Texto da distância
+            # Texto da distância e status
             if self.camera.pos_x is not None:
                 dist_px = np.sqrt((dest_x - self.camera.pos_x)**2 + (dest_y - self.camera.pos_y)**2)
 
-                texto = f"{dist_px:.0f}px"
+                # Texto com status
+                if eh_parede:
+                    texto = f"{dist_px:.0f}px (PAREDE)"
+                    cor_texto = (0, 0, 255)
+                elif not alcancavel:
+                    texto = f"{dist_px:.0f}px (FOV)"
+                    cor_texto = (0, 0, 255)
+                else:
+                    texto = f"{dist_px:.0f}px (OK)"
+                    cor_texto = self.cor_destino
+
                 cv2.putText(
                     img,
                     texto,
                     (int(dest_x) + 10, int(dest_y) - 10),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.5,
-                    self.cor_destino,
+                    cor_texto,
                     2
                 )
 
@@ -615,7 +701,7 @@ class VisualizadorCameraVirtual:
 
         # Fundo semi-transparente para HUD
         overlay = img.copy()
-        cv2.rectangle(overlay, (10, 10), (400, 180), (0, 0, 0), -1)
+        cv2.rectangle(overlay, (10, 10), (400, 230), (0, 0, 0), -1)
         cv2.addWeighted(overlay, 0.7, img, 0.3, 0, img)
 
         # Informações
@@ -623,8 +709,10 @@ class VisualizadorCameraVirtual:
             f"Camera Virtual - Debug ao Vivo",
             f"Posicao: ({int(self.camera.pos_x) if self.camera.pos_x else '?'}, {int(self.camera.pos_y) if self.camera.pos_y else '?'})",
             f"Tela: {self.camera.tela_largura}x{self.camera.tela_altura}px",
-            f"Escala: {self.camera.escala_x:.1f}x{self.camera.escala_y:.1f}",
+            f"Escala MAPA: {self.camera.escala_x:.1f}x{self.camera.escala_y:.1f}",
+            f"Escala FOV: {self.camera.escala_fov_x:.2f}x{self.camera.escala_fov_y:.2f}",
             f"FOV: {int(self.camera.fov_largura_mapa)}x{int(self.camera.fov_altura_mapa)}px",
+            f"1 tile (32px tela) = {32/self.camera.escala_x:.1f}px mundo",
             f"GPS: {self.camera.movimentos_desde_gps}/{self.camera.max_movimentos_sem_gps}",
             f"Historico: {len(self.historico_posicoes)} pos",
             f"Zoom: {self.zoom_level:.1f}x"
@@ -846,16 +934,163 @@ if __name__ == "__main__":
     else:
         print("Nenhuma correção GPS realizada ainda")
 
-    # 11. Manter visualizador aberto
+    # 11. Modo Interativo de Teste Manual
     if visualizador and visualizador.rodando:
         print("\n" + "=" * 70)
-        print("✅ Teste concluído! Visualizador permanece aberto.")
-        print("   Pressione ESC na janela para fechar.")
+        print("🎮 MODO INTERATIVO - TESTE MANUAL DE CLIQUES")
+        print("=" * 70)
+        print("\nControles:")
+        print("  [W] [A] [S] [D] - Direções (cima, esq, baixo, dir)")
+        print("  [P] [O] - Aumentar/diminuir PIXELS do clique (±1px)")
+        print("  [+] [-] - Aumentar/diminuir FOV (largura)")
+        print("  [9] [0] - Aumentar/diminuir FOV (altura)")
+        print("  [M] [N] - Aumentar/diminuir ESCALA (±0.1)")
+        print("  [SPACE] - Executar movimento no jogo")
+        print("  [X] - Salvar configurações (FOV + ESCALA)")
+        print("  [G] - Forçar correção GPS")
+        print("  [R] - Reset zoom")
+        print("  [H] - Toggle histórico")
+        print("  [ESC] - Sair")
+        print("=" * 70)
+        print("\n⚠️ IMPORTANTE: Se 12px mundo = 1 tile, a escala correta deveria ser ~2.67")
+        print("   (1 tile = 32px tela, então: 32 ÷ 12 = 2.67)")
         print("=" * 70)
 
-        # Loop até usuário fechar
+        # Estado do controle interativo
+        direcao = 'direita'  # 'direita', 'esquerda', 'cima', 'baixo'
+        pixels_clique = 32  # Quantidade de PIXELS do clique (distância no mundo)
+
         while visualizador.rodando:
-            visualizador.atualizar()
-            time.sleep(0.05)
+            # Mostrar estado atual
+            setas = {
+                'direita': '→',
+                'esquerda': '←',
+                'cima': '↑',
+                'baixo': '↓'
+            }
+
+            # Calcular em tiles para referência (1 tile = 32px)
+            tiles_equiv = pixels_clique / 32.0
+
+            print(f"\r[Direção: {setas[direcao]} {direcao.upper()}] [Pixels: {pixels_clique}px = {tiles_equiv:.2f} tiles] [FOV: {camera.fov_largura_mapa:.0f}x{camera.fov_altura_mapa:.0f}px]", end='', flush=True)
+
+            # Calcular destino baseado na direção e pixels
+            destino_x = camera.pos_x
+            destino_y = camera.pos_y
+
+            if direcao == 'direita':
+                destino_x = camera.pos_x + pixels_clique
+            elif direcao == 'esquerda':
+                destino_x = camera.pos_x - pixels_clique
+            elif direcao == 'cima':
+                destino_y = camera.pos_y - pixels_clique
+            elif direcao == 'baixo':
+                destino_y = camera.pos_y + pixels_clique
+
+            # Atualizar visualizador com destino proposto
+            visualizador.atualizar(destino=(destino_x, destino_y))
+
+            # Processar tecla
+            key = cv2.waitKey(50) & 0xFF
+
+            if key == 27:  # ESC
+                break
+            elif key == ord('w') or key == ord('W'):
+                direcao = 'cima'
+                print(f"\n   → Direção: CIMA ↑")
+            elif key == ord('s') or key == ord('S'):
+                direcao = 'baixo'
+                print(f"\n   → Direção: BAIXO ↓")
+            elif key == ord('a') or key == ord('A'):
+                direcao = 'esquerda'
+                print(f"\n   → Direção: ESQUERDA ←")
+            elif key == ord('d') or key == ord('D'):
+                direcao = 'direita'
+                print(f"\n   → Direção: DIREITA →")
+            elif key == ord('p') or key == ord('P'):  # P = Aumentar pixels
+                pixels_clique = min(pixels_clique + 1, 500)
+                print(f"\n   → Pixels: {pixels_clique}px ({pixels_clique/32:.2f} tiles)")
+            elif key == ord('o') or key == ord('O'):  # O = Diminuir pixels
+                pixels_clique = max(pixels_clique - 1, 1)
+                print(f"\n   → Pixels: {pixels_clique}px ({pixels_clique/32:.2f} tiles)")
+            elif key == ord('+') or key == ord('='):
+                camera.fov_largura_mapa = min(camera.fov_largura_mapa + 2, 200)
+                camera.escala_fov_x = camera.tela_largura / camera.fov_largura_mapa
+                print(f"\n   → FOV Largura: {camera.fov_largura_mapa:.0f}px (escala: {camera.escala_fov_x:.2f})")
+            elif key == ord('-') or key == ord('_'):
+                camera.fov_largura_mapa = max(camera.fov_largura_mapa - 2, 20)
+                camera.escala_fov_x = camera.tela_largura / camera.fov_largura_mapa
+                print(f"\n   → FOV Largura: {camera.fov_largura_mapa:.0f}px (escala: {camera.escala_fov_x:.2f})")
+            elif key == ord('9'):
+                camera.fov_altura_mapa = min(camera.fov_altura_mapa + 2, 200)
+                camera.escala_fov_y = camera.tela_altura / camera.fov_altura_mapa
+                print(f"\n   → FOV Altura: {camera.fov_altura_mapa:.0f}px (escala: {camera.escala_fov_y:.2f})")
+            elif key == ord('0'):
+                camera.fov_altura_mapa = max(camera.fov_altura_mapa - 2, 20)
+                camera.escala_fov_y = camera.tela_altura / camera.fov_altura_mapa
+                print(f"\n   → FOV Altura: {camera.fov_altura_mapa:.0f}px (escala: {camera.escala_fov_y:.2f})")
+            elif key == ord('m') or key == ord('M'):  # M = Aumentar escala
+                camera.escala_x = min(camera.escala_x + 0.1, 50.0)
+                camera.escala_y = camera.escala_x
+                print(f"\n   → ESCALA: {camera.escala_x:.2f} (1 tile = {32/camera.escala_x:.1f}px mundo)")
+            elif key == ord('n') or key == ord('N'):  # N = Diminuir escala
+                camera.escala_x = max(camera.escala_x - 0.1, 0.5)
+                camera.escala_y = camera.escala_x
+                print(f"\n   → ESCALA: {camera.escala_x:.2f} (1 tile = {32/camera.escala_x:.1f}px mundo)")
+            elif key == ord(' '):  # SPACE - Executar movimento
+                print(f"\n\n🎯 EXECUTANDO MOVIMENTO:")
+                print(f"   Direção: {direcao.upper()} {setas[direcao]}")
+                print(f"   Distância: {pixels_clique}px mundo ({pixels_clique/32:.2f} tiles)")
+                resultado = camera.navegar_para(destino_x, destino_y)
+                print(f"   Resultado: {'✅ SUCESSO' if resultado['sucesso'] else '❌ FALHOU'}")
+                if not resultado['sucesso']:
+                    print(f"   Erro: {resultado['erro']}")
+                else:
+                    print(f"   🖱️ Clicou em: ({resultado['x_tela']}, {resultado['y_tela']})")
+                print()
+            elif key == ord('x') or key == ord('X'):  # X - Salvar configurações
+                print(f"\n\n💾 SALVANDO CONFIGURAÇÕES:")
+                print(f"   FOV: {camera.fov_largura_mapa:.0f}x{camera.fov_altura_mapa:.0f}px")
+                print(f"   Escala FOV: {camera.escala_fov_x:.2f}x{camera.escala_fov_y:.2f}")
+                print(f"   Escala MAPA: {camera.escala_x:.2f}x{camera.escala_y:.2f}")
+                print(f"   1 tile (32px tela) = {32/camera.escala_x:.1f}px mundo")
+
+                # Salvar em arquivo JSON
+                config_fov = {
+                    'fov_largura_mapa': camera.fov_largura_mapa,
+                    'fov_altura_mapa': camera.fov_altura_mapa,
+                    'escala_fov_x': camera.escala_fov_x,
+                    'escala_fov_y': camera.escala_fov_y,
+                    'observacoes': 'FOV calibrado manualmente no modo interativo'
+                }
+
+                # Salvar escala do mapa também
+                config_escala = {
+                    'centro_mapa_tela': {'x': 800, 'y': 450},
+                    'escala': {'x': camera.escala_x, 'y': camera.escala_y},
+                    'observacoes': f'Escala calibrada manualmente - 1 tile = {32/camera.escala_x:.1f}px mundo'
+                }
+
+                with open('camera_virtual_config.json', 'w', encoding='utf-8') as f:
+                    json.dump(config_fov, f, indent=2, ensure_ascii=False)
+
+                with open('map_transform_config.json', 'w', encoding='utf-8') as f:
+                    json.dump(config_escala, f, indent=2, ensure_ascii=False)
+
+                print(f"   ✅ Salvo em: camera_virtual_config.json")
+                print(f"   ✅ Salvo em: map_transform_config.json")
+                print()
+            elif key == ord('g') or key == ord('G'):
+                print("\n\n🔄 Forçando correção GPS...")
+                camera._corrigir_posicao_gps()
+                print()
+            elif key == ord('r') or key == ord('R'):
+                visualizador.zoom_level = 1.0
+                print(f"\n   → Zoom resetado: 1.0x")
+            elif key == ord('h') or key == ord('H'):
+                visualizador.mostrar_historico = not visualizador.mostrar_historico
+                print(f"\n   → Histórico: {'ON' if visualizador.mostrar_historico else 'OFF'}")
+
+        print("\n\n✅ Modo interativo encerrado!")
     else:
         print("\n✅ Teste concluído!")
