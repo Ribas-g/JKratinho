@@ -1,0 +1,11 @@
+{
+  "centro_mapa_tela": {
+    "x": 800,
+    "y": 450
+  },
+  "escala": {
+    "x": 20.0,
+    "y": 20.0
+  },
+  "observacoes": "Escala calibrada manualmente - 1 tile = 1.6px mundo"
+}

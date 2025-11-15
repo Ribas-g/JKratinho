@@ -231,6 +231,25 @@ class GPSRealtimeNCC:
         # Escala fixa (já sabemos que 0.2x funciona perfeitamente!)
         escala = 0.2
 
+        # GARANTIR que captured_map_gray é 2D (grayscale)
+        if len(captured_map_gray.shape) == 3:
+            if captured_map_gray.shape[2] == 3:
+                # BGR (3 canais) -> Grayscale
+                captured_map_gray = cv2.cvtColor(captured_map_gray, cv2.COLOR_BGR2GRAY)
+            else:
+                # Shape (H, W, 1) -> (H, W)
+                captured_map_gray = captured_map_gray.squeeze()
+
+        # GARANTIR que mapa de referência é 2D
+        if len(self.mapa_pb_float.shape) == 3:
+            if self.mapa_pb_float.shape[2] == 3:
+                # BGR (3 canais) -> Grayscale
+                temp_gray = cv2.cvtColor((self.mapa_pb_float * 255).astype(np.uint8), cv2.COLOR_BGR2GRAY)
+                self.mapa_pb_float = img_as_float(temp_gray)
+            else:
+                # Shape (H, W, 1) -> (H, W)
+                self.mapa_pb_float = self.mapa_pb_float.squeeze()
+
         # Redimensionar captura
         h_original, w_original = captured_map_gray.shape
         nova_w = int(w_original * escala)
@@ -368,13 +387,14 @@ class GPSRealtimeNCC:
         cv2.imwrite(filename_map, mapa_visual)
         print(f"   ✅ Mapa salvo: {filename_map}")
 
-    def get_current_position(self, keep_map_open=False, verbose=True):
+    def get_current_position(self, keep_map_open=False, verbose=True, map_already_open=False):
         """
         FUNÇÃO PRINCIPAL: Obtém posição atual do player
 
         Args:
             keep_map_open: Se True, mantém mapa aberto após captura
             verbose: Se True, mostra detalhes no console
+            map_already_open: Se True, não abre o mapa (assume que já está aberto)
 
         Returns:
             dict com:
@@ -388,11 +408,15 @@ class GPSRealtimeNCC:
             print("📍 OBTENDO POSIÇÃO GPS...")
             print("=" * 60)
 
-        # 1. Abrir mapa
-        if verbose:
-            print("\n1️⃣ Abrindo mapa in-game...")
-        self.click_button('open')
-        time.sleep(0.5)  # Aguardar animação
+        # 1. Abrir mapa (só se não estiver aberto)
+        if not map_already_open:
+            if verbose:
+                print("\n1️⃣ Abrindo mapa in-game...")
+            self.click_button('open')
+            time.sleep(0.3)  # Aguardar animação (otimizado)
+        else:
+            if verbose:
+                print("\n1️⃣ Mapa já está aberto, pulando...")
 
         # 2. Capturar screenshot
         if verbose:
@@ -442,7 +466,7 @@ class GPSRealtimeNCC:
             if verbose:
                 print("8️⃣ Fechando mapa...")
             self.click_button('close')
-            time.sleep(0.3)
+            time.sleep(0.4)  # Aumentado para garantir que mapa fechou completamente antes do próximo clique
 
         # Resultado
         resultado = {

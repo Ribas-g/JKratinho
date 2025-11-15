@@ -30,6 +30,7 @@ import math
 from collections import deque
 from dataclasses import dataclass
 from typing import Optional, Tuple, List
+from mapa_virtual_tempo import MapaVirtualComTempo
 
 
 @dataclass
@@ -84,6 +85,17 @@ class ArcherFarmBot:
         self.device = None
         self.model = None
 
+        # Mapa Virtual com Rastreamento Temporal
+        try:
+            self.mapa_virtual = MapaVirtualComTempo()
+            self.usar_mapa_virtual = True
+            print("✅ Mapa Virtual ativado!")
+        except Exception as e:
+            print(f"⚠️ Mapa Virtual não disponível: {e}")
+            print("   Bot funcionará sem validação de clicks")
+            self.mapa_virtual = None
+            self.usar_mapa_virtual = False
+
         # Estado do bot
         self.running = False
         self.paused = False
@@ -93,6 +105,8 @@ class ArcherFarmBot:
 
         # Alvo atual
         self.current_target = None
+        self.target_lock_time = 0  # Timestamp de quando travou no alvo
+        self.target_lock_duration = 2.0  # Manter alvo por 2 segundos antes de trocar
         self.last_action = "IDLE"
         self.last_action_time = 0
         self.action_cooldown = 0.4  # segundos entre ações
@@ -101,6 +115,11 @@ class ArcherFarmBot:
         self.kite_state = "ATTACK"  # Alterna entre ATTACK e MOVE
         self.kite_angle = 0  # Ângulo para movimento circular
         self.last_kite_move = 0
+        self.combat_style = "ranged"  # "ranged" (arqueiro/mago) ou "melee" (guerreiro)
+
+        # Área de farm (limites para não sair do bioma)
+        self.farm_area_center = None  # (x, y) em coordenadas de tela
+        self.farm_area_radius = None  # raio em pixels
 
         # Estatísticas
         self.frame_count = 0
@@ -126,6 +145,17 @@ class ArcherFarmBot:
         # UI
         self.root = None
         self.canvas = None
+
+    def configurar_area_farm(self, center_screen_x, center_screen_y, radius_px):
+        """
+        Configura área de farm em coordenadas de tela
+        Args:
+            center_screen_x, center_screen_y: Centro em pixels da tela
+            radius_px: Raio em pixels
+        """
+        self.farm_area_center = (center_screen_x, center_screen_y)
+        self.farm_area_radius = radius_px
+        print(f"   📍 Área de farm configurada: centro=({center_screen_x}, {center_screen_y}), raio={radius_px}px")
 
     def conectar_bluestacks(self):
         """Conecta ao BlueStacks"""
@@ -161,8 +191,17 @@ class ArcherFarmBot:
         """Captura screenshot"""
         try:
             screenshot_bytes = self.device.shell("screencap -p", encoding=None)
+            if not screenshot_bytes or len(screenshot_bytes) < 100:
+                print(f"⚠️ Screenshot vazio ou muito pequeno")
+                return None
+
             nparr = np.frombuffer(screenshot_bytes, np.uint8)
             img_bgr = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+            if img_bgr is None or img_bgr.size == 0:
+                print(f"⚠️ Falha ao decodificar screenshot")
+                return None
+
             # IMPORTANTE: YOLO espera BGR, não converter!
             return img_bgr
         except Exception as e:
@@ -172,6 +211,9 @@ class ArcherFarmBot:
     def detectar_objetos(self, img):
         """Detecta objetos na imagem"""
         try:
+            if img is None or img.size == 0:
+                return []
+
             # Threshold mais baixo para detectar mais (ajustável)
             results = self.model(img, conf=0.25, verbose=False)
 
@@ -192,8 +234,64 @@ class ArcherFarmBot:
 
             return deteccoes
         except Exception as e:
-            print(f"❌ Erro: {e}")
+            print(f"❌ Erro na detecção: {e}")
             return []
+
+    def detectar_cerco(self, deteccoes):
+        """
+        Detecta se está sendo cercado por mobs (PERIGOSO!)
+        Retorna (cercado, num_mobs_proximos, direcao_fuga)
+        """
+        mobs = [d for d in deteccoes if d['class'] in ['crab', 'rat', 'crow', 'spider', 'skeleton', 'cobra', 'worm', 'scorpion']]
+
+        # Contar mobs a 1 tile de distância
+        mobs_muito_proximos = []
+        for mob in mobs:
+            dist_px, dist_tiles = self.calcular_distancia(mob['bbox'])
+            if dist_tiles <= 1.0:
+                x1, y1, x2, y2 = mob['bbox']
+                mob_center_x = (x1 + x2) // 2
+                mob_center_y = (y1 + y2) // 2
+                mobs_muito_proximos.append({
+                    'bbox': mob['bbox'],
+                    'center': (mob_center_x, mob_center_y),
+                    'dist': dist_tiles
+                })
+
+        num_proximos = len(mobs_muito_proximos)
+
+        # 3+ mobs a 1 tile = CERCO PERIGOSO!
+        if num_proximos >= 3:
+            # Calcular direção média dos mobs (para fugir na direção oposta)
+            avg_dx = 0
+            avg_dy = 0
+            for mob in mobs_muito_proximos:
+                dx = mob['center'][0] - self.config.center_x
+                dy = mob['center'][1] - self.config.center_y
+                avg_dx += dx
+                avg_dy += dy
+
+            avg_dx /= num_proximos
+            avg_dy /= num_proximos
+
+            # Direção de fuga: oposta aos mobs
+            fuga_dx = -avg_dx
+            fuga_dy = -avg_dy
+
+            # Normalizar
+            dist = math.sqrt(fuga_dx**2 + fuga_dy**2)
+            if dist > 0:
+                fuga_dx /= dist
+                fuga_dy /= dist
+
+            # Ponto de fuga: 3 tiles na direção oposta
+            fuga_distance = self.config.tile_size * 3.0
+            fuga_x = int(self.config.center_x + fuga_dx * fuga_distance)
+            fuga_y = int(self.config.center_y + fuga_dy * fuga_distance)
+
+            return True, num_proximos, (fuga_x, fuga_y)
+
+        return False, num_proximos, None
 
     def calcular_distancia(self, bbox):
         """Calcula distância do mob ao player (centro) em pixels"""
@@ -226,11 +324,17 @@ class ArcherFarmBot:
             return "MUITO_LONGE"  # Ignorar
 
     def selecionar_alvo(self, deteccoes):
-        """Seleciona melhor alvo para atacar"""
+        """
+        Seleciona melhor alvo para atacar com PERSISTÊNCIA
+        Mantém alvo atual por target_lock_duration segundos antes de trocar
+        """
+        current_time = time.time()
+
         # Filtrar apenas mobs (não coins)
         mobs = [d for d in deteccoes if d['class'] in ['crab', 'rat', 'crow', 'spider', 'skeleton', 'cobra', 'worm', 'scorpion']]
 
         if not mobs:
+            self.current_target = None
             return None
 
         # Calcular distâncias
@@ -245,6 +349,23 @@ class ArcherFarmBot:
                 'dist_tiles': dist_tiles,
                 'zona': zona
             })
+
+        # PERSISTÊNCIA: Se tem alvo atual e ainda está visível, manter por um tempo
+        if self.current_target is not None:
+            time_locked = current_time - self.target_lock_time
+
+            # Se ainda não passou o tempo de lock, verificar se alvo atual ainda existe
+            if time_locked < self.target_lock_duration:
+                # Procurar alvo atual nas detecções
+                for mob_info in mobs_com_info:
+                    if mob_info['mob']['class'] == self.current_target['mob']['class']:
+                        # Verificar se é aproximadamente a mesma posição (dentro de 50px)
+                        if mob_info['dist_px'] - self.current_target['dist_px'] < 50:
+                            # Manter alvo atual
+                            return mob_info
+
+        # Trocar de alvo ou selecionar novo
+        self.target_lock_time = current_time
 
         # Prioridade: mobs na zona IDEAL, depois mais próximos
         ideal = [m for m in mobs_com_info if m['zona'] == 'IDEAL']
@@ -267,8 +388,15 @@ class ArcherFarmBot:
 
         return None
 
-    def calcular_ponto_kite(self, mob_bbox, kite_type="strafe"):
-        """Calcula ponto para kiting (movimento evasivo mantendo distância)"""
+    def calcular_ponto_kite(self, mob_bbox, kite_type="strafe", combat_style="ranged"):
+        """
+        Calcula ponto para kiting (movimento evasivo mantendo distância)
+
+        Args:
+            mob_bbox: Bounding box do mob
+            kite_type: "strafe" (lateral), "back" (recuar), "circle" (circular melee)
+            combat_style: "ranged" (arqueiro/mago) ou "melee" (guerreiro)
+        """
         x1, y1, x2, y2 = mob_bbox
         mob_center_x = (x1 + x2) // 2
         mob_center_y = (y1 + y2) // 2
@@ -286,46 +414,77 @@ class ArcherFarmBot:
         dx_norm = dx / dist
         dy_norm = dy / dist
 
-        if kite_type == "back":
-            # Recuar direto (para emergências - mob muito perto)
-            kite_distance = self.config.tile_size * 2.5
-            kite_x = self.config.center_x + int(dx_norm * kite_distance)
-            kite_y = self.config.center_y + int(dy_norm * kite_distance)
+        if combat_style == "melee":
+            # GUERREIRO (MELEE): Movimento circular curto ao redor do mob
+            # Mantém distância de ~1 tile para poder atacar
 
-        else:  # strafe (movimento lateral/circular)
-            # Distância ideal: 2.5 tiles (sweet spot para arqueiro)
-            ideal_distance = self.config.tile_size * 2.5
+            if kite_type == "back":
+                # Emergência: recuar um pouco
+                kite_distance = self.config.tile_size * 1.5
+                kite_x = self.config.center_x + int(dx_norm * kite_distance)
+                kite_y = self.config.center_y + int(dy_norm * kite_distance)
+            else:
+                # Movimento circular: orbitar ao redor do mob
+                # Distância fixa de 1 tile (alcance melee)
+                ideal_distance = self.config.tile_size * 1.0
 
-            # Se muito perto, aumentar distância
-            # Se muito longe, diminuir distância
-            target_distance = ideal_distance
+                # Incrementar ângulo para movimento circular
+                self.kite_angle += 45  # 45 graus por movimento
+                if self.kite_angle >= 360:
+                    self.kite_angle = 0
 
-            # Calcular ângulo perpendicular para movimento lateral
-            # Incrementar ângulo para criar movimento circular
-            self.kite_angle += 45  # 45 graus por movimento
-            if self.kite_angle >= 360:
-                self.kite_angle = 0
+                # Converter ângulo para radianos
+                angle_rad = math.radians(self.kite_angle)
 
-            angle_rad = math.radians(self.kite_angle)
+                # Calcular posição circular ao redor do mob
+                offset_x = int(ideal_distance * math.cos(angle_rad))
+                offset_y = int(ideal_distance * math.sin(angle_rad))
 
-            # Vetor perpendicular (strafe lateral)
-            perp_dx = -dy_norm
-            perp_dy = dx_norm
+                kite_x = mob_center_x + offset_x
+                kite_y = mob_center_y + offset_y
 
-            # Combinar movimento: para trás + lateral
-            # 70% para trás, 30% lateral
-            combined_dx = dx_norm * 0.7 + perp_dx * 0.3 * math.cos(angle_rad)
-            combined_dy = dy_norm * 0.7 + perp_dy * 0.3 * math.sin(angle_rad)
+        else:
+            # RANGED (ARQUEIRO/MAGO): Movimento original
+            if kite_type == "back":
+                # Recuar direto (para emergências - mob muito perto)
+                kite_distance = self.config.tile_size * 2.5
+                kite_x = self.config.center_x + int(dx_norm * kite_distance)
+                kite_y = self.config.center_y + int(dy_norm * kite_distance)
 
-            # Normalizar vetor combinado
-            combined_dist = math.sqrt(combined_dx**2 + combined_dy**2)
-            if combined_dist > 0:
-                combined_dx /= combined_dist
-                combined_dy /= combined_dist
+            else:  # strafe (movimento lateral/circular)
+                # Distância ideal: 2.5 tiles (sweet spot para arqueiro)
+                ideal_distance = self.config.tile_size * 2.5
 
-            # Calcular ponto de kite
-            kite_x = self.config.center_x + int(combined_dx * target_distance)
-            kite_y = self.config.center_y + int(combined_dy * target_distance)
+                # Se muito perto, aumentar distância
+                # Se muito longe, diminuir distância
+                target_distance = ideal_distance
+
+                # Calcular ângulo perpendicular para movimento lateral
+                # Incrementar ângulo para criar movimento circular
+                self.kite_angle += 45  # 45 graus por movimento
+                if self.kite_angle >= 360:
+                    self.kite_angle = 0
+
+                angle_rad = math.radians(self.kite_angle)
+
+                # Vetor perpendicular (strafe lateral)
+                perp_dx = -dy_norm
+                perp_dy = dx_norm
+
+                # Combinar movimento: para trás + lateral
+                # 70% para trás, 30% lateral
+                combined_dx = dx_norm * 0.7 + perp_dx * 0.3 * math.cos(angle_rad)
+                combined_dy = dy_norm * 0.7 + perp_dy * 0.3 * math.sin(angle_rad)
+
+                # Normalizar vetor combinado
+                combined_dist = math.sqrt(combined_dx**2 + combined_dy**2)
+                if combined_dist > 0:
+                    combined_dx /= combined_dist
+                    combined_dy /= combined_dist
+
+                # Calcular ponto de kite
+                kite_x = self.config.center_x + int(combined_dx * target_distance)
+                kite_y = self.config.center_y + int(combined_dy * target_distance)
 
         # Garantir que está dentro da tela
         kite_x = max(100, min(self.config.screen_width - 100, kite_x))
@@ -333,14 +492,74 @@ class ArcherFarmBot:
 
         return kite_x, kite_y
 
-    def executar_tap(self, x, y, description=""):
-        """Executa tap no emulador"""
+    def atualizar_posicao_gps(self, mundo_x, mundo_y):
+        """
+        Atualiza posição GPS no mapa virtual
+        Deve ser chamado quando GPS retorna nova posição
+        """
+        if self.usar_mapa_virtual and self.mapa_virtual:
+            self.mapa_virtual.atualizar_posicao_gps(mundo_x, mundo_y)
+
+    def precisa_gps_recalibracao(self):
+        """
+        Verifica se precisa fazer GPS recalibração
+        """
+        if self.usar_mapa_virtual and self.mapa_virtual:
+            return self.mapa_virtual.precisa_gps()
+        return False
+
+    def executar_tap_direto(self, x, y):
+        """Executa tap direto no dispositivo (sem validação)"""
         try:
-            # Converter coordenadas se necessário (screen vs touch)
             self.device.shell(f"input tap {x} {y}")
-            if description:
-                print(f"   🎯 Tap: {description} ({x}, {y})")
             return True
+        except Exception as e:
+            print(f"❌ Erro ao executar tap: {e}")
+            return False
+
+    def executar_tap(self, x, y, description=""):
+        """Executa tap no emulador com validação via mapa virtual"""
+        try:
+            # ZONA MORTA: Não clicar muito perto do personagem (centro da tela)
+            # para evitar abrir menu do personagem
+            dx = x - self.config.center_x
+            dy = y - self.config.center_y
+            dist_from_center = math.sqrt(dx**2 + dy**2)
+
+            # Raio da zona morta: ~80 pixels (personagem + margem de segurança)
+            DEAD_ZONE_RADIUS = 80
+
+            if dist_from_center < DEAD_ZONE_RADIUS:
+                # Ajustar clique para borda da zona morta
+                if dist_from_center > 0:
+                    # Normalizar e multiplicar pelo raio da zona morta
+                    scale = DEAD_ZONE_RADIUS / dist_from_center
+                    x = self.config.center_x + int(dx * scale)
+                    y = self.config.center_y + int(dy * scale)
+                    # print(f"   ⚠️ Clique ajustado para fora da zona morta")
+                else:
+                    # Exatamente no centro, não clicar
+                    print(f"   ⚠️ Clique cancelado: muito perto do personagem!")
+                    return False
+
+            # Se mapa virtual está ativo, usar validação temporal
+            if self.usar_mapa_virtual and self.mapa_virtual:
+                sucesso = self.mapa_virtual.executar_tap_com_validacao(
+                    x, y,
+                    self.executar_tap_direto
+                )
+
+                if sucesso and description:
+                    print(f"   🎯 Tap validado: {description}")
+
+                return sucesso
+            else:
+                # Fallback: executar tap direto sem validação
+                self.device.shell(f"input tap {x} {y}")
+                if description:
+                    print(f"   🎯 Tap: {description} ({x}, {y})")
+                return True
+
         except Exception as e:
             print(f"❌ Erro ao executar tap: {e}")
             return False
@@ -389,7 +608,7 @@ class ArcherFarmBot:
         if zona == "MUITO_PERTO":
             # EMERGÊNCIA: Mob MUITO perto (< 1 tile)
             # Recuar urgente!
-            kite_x, kite_y = self.calcular_ponto_kite(mob['bbox'], kite_type="back")
+            kite_x, kite_y = self.calcular_ponto_kite(mob['bbox'], kite_type="back", combat_style=self.combat_style)
             self.executar_tap(kite_x, kite_y, f"🔴 RECUAR URGENTE de {mob['class']}")
             action = "RECUAR"
             self.kite_state = "MOVE"  # Forçar movimento no próximo frame
@@ -406,7 +625,7 @@ class ArcherFarmBot:
 
             else:  # kite_state == "MOVE"
                 # MOVER: Kiting para manter distância
-                kite_x, kite_y = self.calcular_ponto_kite(mob['bbox'], kite_type="strafe")
+                kite_x, kite_y = self.calcular_ponto_kite(mob['bbox'], kite_type="strafe", combat_style=self.combat_style)
                 self.executar_tap(kite_x, kite_y, f"🏃 Kite de {mob['class']}")
                 action = "KITE"
                 self.kite_state = "ATTACK"  # Próxima ação: atacar
@@ -447,11 +666,36 @@ class ArcherFarmBot:
         if img is None:
             return
 
+        # Verificar movimento completo (se mapa virtual ativo)
+        if self.usar_mapa_virtual and self.mapa_virtual:
+            if self.mapa_virtual.movimento_ativo:
+                # Verificar se movimento foi concluído
+                if self.mapa_virtual.verificar_movimento_completo(img):
+                    # Finalizar movimento e atualizar posição virtual
+                    self.mapa_virtual.finalizar_movimento()
+                else:
+                    # Movimento ainda em progresso, não executar novas ações
+                    # Apenas atualizar visualização se necessário
+                    if self.show_visualization:
+                        self.atualizar_display(img, [])
+                    return
+
         # Detectar
         deteccoes = self.detectar_objetos(img)
 
         # Bot ativo
         if self.bot_active:
+            # PRIORIDADE 1: Detectar cerco (PERIGOSO!)
+            cercado, num_mobs, ponto_fuga = self.detectar_cerco(deteccoes)
+
+            if cercado:
+                # 🚨 CERCO DETECTADO! FUGIR IMEDIATAMENTE!
+                print(f"\n🚨 CERCO DETECTADO! {num_mobs} mobs a 1 tile!")
+                print(f"   🏃 FUGINDO para ({ponto_fuga[0]}, {ponto_fuga[1]})...")
+                self.executar_tap(ponto_fuga[0], ponto_fuga[1], f"🚨 FUGA DE CERCO ({num_mobs} mobs)")
+                self.current_target = None  # Resetar alvo
+                return  # Não fazer mais nada neste frame
+
             # Selecionar alvo
             alvo_info = self.selecionar_alvo(deteccoes)
             self.current_target = alvo_info
@@ -609,6 +853,10 @@ class ArcherFarmBot:
 
     def atualizar_display(self, img, deteccoes):
         """Atualiza visualização"""
+        # Se não tem interface gráfica (modo headless), não faz nada
+        if self.root is None:
+            return
+
         # Converter BGR para RGB para PIL
         img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         img_pil = Image.fromarray(img_rgb)
