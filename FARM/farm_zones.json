@@ -1,0 +1,133 @@
+{
+  "zones": {
+    "Praia": {
+      "mobs": ["crab"],
+      "level_range": "1-10",
+      "spawn_point": {"x": 147, "y": 1468},
+      "farm_area": {
+        "center": {"x": 147, "y": 1468},
+        "radius": 100
+      },
+      "description": "Área inicial com Caranguejos"
+    },
+    "Pré-Praia": {
+      "mobs": ["crab", "rat"],
+      "level_range": "5-15",
+      "spawn_point": {"x": 220, "y": 1153},
+      "farm_area": {
+        "center": {"x": 220, "y": 1153},
+        "radius": 80
+      },
+      "description": "Transição entre praia e vila"
+    },
+    "Vila Inicial": {
+      "mobs": ["rat"],
+      "level_range": "10-20",
+      "spawn_point": {"x": 378, "y": 1143},
+      "farm_area": {
+        "center": {"x": 378, "y": 1143},
+        "radius": 70
+      },
+      "description": "Vila com ratos"
+    },
+    "Floresta dos Corvos": {
+      "mobs": ["crow"],
+      "level_range": "20-35",
+      "spawn_point": {"x": 287, "y": 1000},
+      "farm_area": {
+        "center": {"x": 287, "y": 1000},
+        "radius": 90
+      },
+      "description": "Floresta com corvos"
+    },
+    "Deserto": {
+      "mobs": ["scorpion", "worm"],
+      "level_range": "30-50",
+      "spawn_point": {"x": 374, "y": 1342},
+      "farm_area": {
+        "center": {"x": 374, "y": 1342},
+        "radius": 100
+      },
+      "description": "Deserto com escorpiões e vermes"
+    },
+    "Labirinto dos Assassinos": {
+      "mobs": ["spider"],
+      "level_range": "40-60",
+      "spawn_point": {"x": 322, "y": 864},
+      "farm_area": {
+        "center": {"x": 322, "y": 864},
+        "radius": 80
+      },
+      "description": "Labirinto com aranhas"
+    },
+    "Área dos Zumbis": {
+      "mobs": ["skeleton"],
+      "level_range": "50-70",
+      "spawn_point": {"x": 261, "y": 695},
+      "farm_area": {
+        "center": {"x": 261, "y": 695},
+        "radius": 85
+      },
+      "description": "Área com esqueletos"
+    },
+    "Covil dos Esqueletos": {
+      "mobs": ["skeleton"],
+      "level_range": "60-80",
+      "spawn_point": {"x": 174, "y": 549},
+      "farm_area": {
+        "center": {"x": 174, "y": 549},
+        "radius": 75
+      },
+      "description": "Covil com esqueletos mais fortes"
+    },
+    "Território dos Elfos": {
+      "mobs": ["crow", "spider"],
+      "level_range": "70-90",
+      "spawn_point": {"x": 352, "y": 532},
+      "farm_area": {
+        "center": {"x": 352, "y": 532},
+        "radius": 95
+      },
+      "description": "Território élfico com corvos e aranhas"
+    },
+    "Zona dos Lagartos": {
+      "mobs": ["cobra"],
+      "level_range": "80-100",
+      "spawn_point": {"x": 504, "y": 464},
+      "farm_area": {
+        "center": {"x": 504, "y": 464},
+        "radius": 100
+      },
+      "description": "Zona com cobras"
+    }
+  },
+  "class_configs": {
+    "archer": {
+      "name": "Arqueiro",
+      "kiting_style": "ranged",
+      "ideal_distance": 2.5,
+      "min_distance": 1.5,
+      "max_distance": 4.0,
+      "movement_pattern": "strafe",
+      "attack_cooldown": 0.4
+    },
+    "warrior": {
+      "name": "Guerreiro",
+      "kiting_style": "melee",
+      "ideal_distance": 1.0,
+      "min_distance": 0.5,
+      "max_distance": 1.5,
+      "movement_pattern": "circle",
+      "attack_cooldown": 0.5
+    },
+    "mage": {
+      "name": "Mago",
+      "kiting_style": "ranged",
+      "ideal_distance": 3.0,
+      "min_distance": 2.0,
+      "max_distance": 5.0,
+      "movement_pattern": "strafe",
+      "attack_cooldown": 0.4
+    }
+  }
+}

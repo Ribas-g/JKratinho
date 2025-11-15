@@ -82,7 +82,7 @@ class NavegadorAutomaticoNCC:
 
         print(f"   📏 Distância de clique: {self.click_distance} pixels (no mapa mundo)")
 
-        self.wait_after_click = 1.0  # Tempo de espera após clique
+        self.wait_after_click = 0.3  # Tempo de espera após clique para garantir que comando foi processado
         self.max_steps = 100  # Máximo de passos para evitar loop infinito
         self.tolerance_pixels = 30  # Tolerância para considerar "chegou" (em pixels)
         
@@ -282,15 +282,19 @@ class NavegadorAutomaticoNCC:
         # Pequeno delay para garantir que o clique foi processado
         time.sleep(0.1)
 
-    def detectar_linha_verde(self):
+    def detectar_linha_verde(self, return_ratio=False):
         """
         Detecta linha verde no mapa (indica que player está em movimento)
 
         Player é CIANO (#00ffff) após levels → HSV: H=90, S=255, V=255
         Linha verde é VERDE PURO (#00ff00) → HSV: H=60, S=255, V=255
 
+        Args:
+            return_ratio: Se True, retorna (bool, ratio) ao invés de apenas bool
+
         Returns:
-            True se detectou linha verde
+            Se return_ratio=False: True se detectou linha verde
+            Se return_ratio=True: (True/False, green_ratio_percentage)
         """
         # Capturar screenshot
         screenshot = self.gps.capture_screen()
@@ -333,13 +337,23 @@ class NavegadorAutomaticoNCC:
         total_pixels = green_mask.shape[0] * green_mask.shape[1]
 
         if total_pixels == 0:
-            return False
+            return (False, 0.0) if return_ratio else False
 
         green_ratio = green_pixels / total_pixels
+        green_percentage = green_ratio * 100  # Converter para porcentagem
 
-        # Se mais de 0.02% é verde, há linha (threshold reduzido para detectar cliques curtos)
-        # Testado: movimento longo = 0.755%, cliques curtos = 0.038%
-        return green_ratio > 0.0002
+        # SISTEMA DE THRESHOLD ESCALONADO (ideia do usuário):
+        # 0-0.5% = Parado/ruído (falso positivo)
+        # 0.5-2% = Começando a andar (transição)
+        # 2%+ = Realmente andando (confirmado)
+
+        # Threshold ajustado: 0.5% (5x mais alto que antes)
+        # Reduz drasticamente falsos positivos
+        is_moving = green_ratio > 0.005  # 0.5% ao invés de 0.02%
+
+        if return_ratio:
+            return (is_moving, green_percentage)
+        return is_moving
 
     def aguardar_chegada(self, destino_x, destino_y, x_antes, y_antes, max_wait=10.0, use_gps_confirm=True):
         """
@@ -360,22 +374,42 @@ class NavegadorAutomaticoNCC:
             True se player chegou, False se timeout
         """
         start_time = time.time()
-        check_interval = 0.3
+        check_interval = 0.15  # Reduzido para checks mais rápidos
         last_print_time = 0
 
         print(f"      ⏳ Aguardando movimento (de {x_antes},{y_antes} para {destino_x},{destino_y})...")
 
         # FASE 1: Aguardar linha verde APARECER (player começou a andar)
+        # MELHORIA: Verificar 2 frames consecutivos para evitar falsos positivos
         movimento_detectado = False
-        fase1_timeout = 1.5  # Timeout reduzido
+        fase1_timeout = 0.8  # Timeout reduzido (mais rápido)
+        frames_consecutivos_movimento = 0  # Contador de frames com movimento
+        frames_necessarios = 2  # Precisa de 2 frames consecutivos
 
         while (time.time() - start_time) < fase1_timeout:
-            has_green = self.detectar_linha_verde()
+            has_green, green_pct = self.detectar_linha_verde(return_ratio=True)
 
             if has_green:
-                print(f"      ✅ Movimento iniciado (linha verde detectada)!")
-                movimento_detectado = True
-                break
+                frames_consecutivos_movimento += 1
+
+                # Mostrar porcentagem (barra de loading)
+                if green_pct >= 2.0:
+                    status = "andando forte"
+                elif green_pct >= 0.5:
+                    status = "começando"
+                else:
+                    status = "detectado"
+
+                print(f"         Verde: {green_pct:.2f}% ({status})")
+
+                # Confirmar movimento após frames consecutivos
+                if frames_consecutivos_movimento >= frames_necessarios:
+                    print(f"      ✅ Movimento confirmado ({frames_consecutivos_movimento} frames, {green_pct:.2f}%)!")
+                    movimento_detectado = True
+                    break
+            else:
+                # Resetar contador se perdeu movimento
+                frames_consecutivos_movimento = 0
 
             time.sleep(check_interval)
 
@@ -388,7 +422,7 @@ class NavegadorAutomaticoNCC:
             # Verificar com GPS se player andou
             if use_gps_confirm:
                 print(f"      🔍 Verificando se player andou (GPS)...")
-                pos_depois = self.gps.get_current_position(keep_map_open=True, verbose=False)
+                pos_depois = self.gps.get_current_position(keep_map_open=True, verbose=False, map_already_open=True)
                 x_depois, y_depois = pos_depois['x'], pos_depois['y']
 
                 # Calcular movimento (delta X e Y)
@@ -455,30 +489,32 @@ class NavegadorAutomaticoNCC:
         # FASE 2: Aguardar linha verde SUMIR (player parou)
         print(f"      ⏳ Aguardando parar...")
         consecutive_no_green = 0
-        required_no_green = 3
+        required_no_green = 2  # Reduzido para ser mais rápido (2 frames)
+        last_green_pct = 0
 
         while (time.time() - start_time) < max_wait:
-            has_green = self.detectar_linha_verde()
+            has_green, green_pct = self.detectar_linha_verde(return_ratio=True)
 
             if has_green:
                 consecutive_no_green = 0
+                last_green_pct = green_pct
 
-                # Print periódico
+                # Print periódico com porcentagem
                 current_time = time.time()
                 if current_time - last_print_time >= 2.0:
-                    print(f"         Ainda em movimento... ({int(current_time - start_time)}s)")
+                    print(f"         Ainda em movimento... ({int(current_time - start_time)}s, verde: {green_pct:.2f}%)")
                     last_print_time = current_time
             else:
                 consecutive_no_green += 1
 
                 # Linha verde sumiu consistentemente
                 if consecutive_no_green >= required_no_green:
-                    print(f"      ✅ Player parou (linha verde sumiu)!")
+                    print(f"      ✅ Player parou (verde: {last_green_pct:.2f}% → 0%)")
 
                     # FASE 3: CONFIRMAÇÃO POR GPS
                     if use_gps_confirm:
                         print(f"      🔍 Confirmando com GPS...")
-                        pos_atual = self.gps.get_current_position(keep_map_open=True, verbose=False)
+                        pos_atual = self.gps.get_current_position(keep_map_open=True, verbose=False, map_already_open=True)
                         x_atual, y_atual = pos_atual['x'], pos_atual['y']
                         dist = self.calcular_distancia(x_atual, y_atual, destino_x, destino_y)
 
@@ -502,7 +538,7 @@ class NavegadorAutomaticoNCC:
         # Verificação final por GPS
         if use_gps_confirm:
             print(f"      🔍 Verificação final com GPS...")
-            pos_atual = self.gps.get_current_position(keep_map_open=True, verbose=False)
+            pos_atual = self.gps.get_current_position(keep_map_open=True, verbose=False, map_already_open=True)
             x_atual, y_atual = pos_atual['x'], pos_atual['y']
             dist = self.calcular_distancia(x_atual, y_atual, destino_x, destino_y)
 
@@ -889,11 +925,13 @@ class NavegadorAutomaticoNCC:
                 print("   🗺️ Usando pathfinding A*")
             print("=" * 60)
 
-        # Obter posição inicial
+        # Obter posição inicial (ABRE o mapa e MANTÉM ABERTO)
         print("\n📍 Obtendo posição inicial...")
-        pos = self.gps.get_current_position(keep_map_open=False, verbose=False)
+        print("   🗺️ Abrindo mapa (será mantido aberto durante navegação)...")
+        pos = self.gps.get_current_position(keep_map_open=True, verbose=False)
         x_inicial, y_inicial = pos['x'], pos['y']
         print(f"   Posição inicial: ({x_inicial}, {y_inicial}) - {pos['zone']}")
+        print(f"   ✅ Mapa aberto e será mantido durante toda navegação")
 
         # Calcular rota com pathfinding
         path_completo = None
@@ -984,9 +1022,9 @@ class NavegadorAutomaticoNCC:
             if verbose:
                 print(f"\n▶️ Passo {step}/{max_steps}")
 
-            # 1. CAPTURAR TELA ATUAL e obter posição atual
+            # 1. CAPTURAR TELA ATUAL e obter posição atual (mapa JÁ está aberto)
             print("   1️⃣ Capturando tela atual e obtendo posição...")
-            pos = self.gps.get_current_position(keep_map_open=True, verbose=False)
+            pos = self.gps.get_current_position(keep_map_open=True, verbose=False, map_already_open=True)
             x_atual, y_atual = pos['x'], pos['y']
             print(f"      📍 Posição atual: ({x_atual}, {y_atual}) - {pos['zone']}")
             
@@ -1015,7 +1053,9 @@ class NavegadorAutomaticoNCC:
                 print(f"🎯 CHEGOU NO DESTINO!")
                 print(f"   Posição final: ({x_atual}, {y_atual})")
                 print(f"{'=' * 60}\n")
+                print("   🗺️ Fechando mapa...")
                 self.gps.click_button('close')
+                time.sleep(0.3)  # Aguardar mapa fechar
                 return True
             
             # 2.5. Verificar se player está preso (não se moveu nos últimos passos)
@@ -1343,7 +1383,9 @@ class NavegadorAutomaticoNCC:
 
         # Máximo de passos atingido
         print(f"\n⚠️ Máximo de passos ({max_steps}) atingido!")
+        print("   🗺️ Fechando mapa...")
         self.gps.click_button('close')
+        time.sleep(0.3)  # Aguardar mapa fechar
         return False
 
     def navegar_para_zona(self, nome_zona, verbose=True):

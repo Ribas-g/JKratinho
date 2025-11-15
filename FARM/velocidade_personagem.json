@@ -1,0 +1,64 @@
+{
+  "velocidade_px_s": 124.38126094907237,
+  "tempo_por_tile": 0.2656217559935555,
+  "pixels_por_tile": 32,
+  "fator_escala": 20.0,
+  "metodo": "calibracao_manual",
+  "medicoes": [
+    {
+      "direcao": "esquerda",
+      "tiles_solicitados": 6,
+      "tiles_reais": 6,
+      "distancia_px": 192,
+      "duracao": 1.777928352355957,
+      "velocidade_px_s": 107.99085336907879,
+      "tempo_por_tile": 0.29632139205932617
+    },
+    {
+      "direcao": "baixo",
+      "tiles_solicitados": 10,
+      "tiles_reais": 10,
+      "distancia_px": 320,
+      "duracao": 3.029306650161743,
+      "velocidade_px_s": 105.63473327565379,
+      "tempo_por_tile": 0.3029306650161743
+    },
+    {
+      "direcao": "direita",
+      "tiles_solicitados": 2,
+      "tiles_reais": 2,
+      "distancia_px": 64,
+      "duracao": 0.36238694190979004,
+      "velocidade_px_s": 176.60680504302414,
+      "tempo_por_tile": 0.18119347095489502
+    },
+    {
+      "direcao": "esquerda",
+      "tiles_solicitados": 3,
+      "tiles_reais": 3,
+      "distancia_px": 96,
+      "duracao": 0.733881950378418,
+      "velocidade_px_s": 130.81122917725213,
+      "tempo_por_tile": 0.24462731679280597
+    },
+    {
+      "direcao": "esquerda",
+      "tiles_solicitados": 7,
+      "tiles_reais": 7,
+      "distancia_px": 224,
+      "duracao": 1.9385197162628174,
+      "velocidade_px_s": 115.55208756495871,
+      "tempo_por_tile": 0.27693138803754536
+    },
+    {
+      "direcao": "esquerda",
+      "tiles_solicitados": 10,
+      "tiles_reais": 10,
+      "distancia_px": 320,
+      "duracao": 2.9172630310058594,
+      "velocidade_px_s": 109.69185726446662,
+      "tempo_por_tile": 0.29172630310058595
+    }
+  ],
+  "data": "2025-11-14 14:32:05"
+}
