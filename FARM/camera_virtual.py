@@ -74,10 +74,10 @@ class CameraVirtual:
 
         # Imprimir informações de inicialização
         print("🎥 Câmera Virtual inicializada!")
-        print(f"   Tela do jogo: {self.tela_largura}x{self.tela_altura}px")
-        print(f"   Escala mapa (clicar): {self.escala_x:.1f}x{self.escala_y:.1f}")
-        print(f"   Escala FOV (visão): {self.escala_fov_x:.1f}x{self.escala_fov_y:.1f}")
-        print(f"   FOV (mapa mundo): {self.fov_largura_mapa:.0f}x{self.fov_altura_mapa:.0f}px")
+        print(f"   Tela do jogo: {self.tela_largura}x{self.tela_altura}px (1 tile = {self.pixels_por_tile_jogo}px)")
+        print(f"   Tiles visíveis: {int(self.tiles_visiveis_x)}x{int(self.tiles_visiveis_y)} tiles")
+        print(f"   Escala mapa: {self.escala_x:.1f}px/tile")
+        print(f"   FOV no mapa: {self.fov_largura_mapa:.0f}x{self.fov_altura_mapa:.0f}px")
         print(f"   GPS a cada {self.max_movimentos_sem_gps} movimentos")
 
     def _carregar_escala_mapa(self):
@@ -95,48 +95,40 @@ class CameraVirtual:
             self.escala_y = config['escala']['y']
 
         except FileNotFoundError:
-            # Fallback: usar escala calculada baseada no grid
-            # No jogo: 1 tile = 100px na tela
-            # No mapa: 1 tile = 11px
-            # Escala = 100 / 11 = 9.09
+            # Fallback: usar escala padrão calibrada
+            # map_transform_config.json padrão usa 20.0
+            # (20 pixels no mapa = 1 tile)
             print("   ⚠️ map_transform_config.json não encontrado")
-            print("   Usando escala calculada: 9.09 (100px tela ÷ 11px mundo)")
-            self.escala_x = 9.09
-            self.escala_y = 9.09
+            print("   Usando escala padrão: 20.0 (20px no mapa = 1 tile)")
+            self.escala_x = 20.0
+            self.escala_y = 20.0
 
     def _carregar_config_fov(self):
         """
-        Carrega configuração de FOV salva ou usa padrão
+        Calcula FOV baseado na escala do mapa
 
-        CÁLCULO DO FOV:
+        LÓGICA CORRETA:
         - Tela do jogo: 1600x900px
-        - No jogo: 1 tile = 100px (visível na tela)
-        - Visão: 16x9 tiles (1600÷100 = 16, 900÷100 = 9)
-        - No mapa mundo: 1 tile = 11px
-        - Logo: FOV = 16×11 x 9×11 = 176x99 pixels no mapa mundo
+        - 1 tile no jogo = 100px (quadrado visível na tela)
+        - Logo: FOV = 16 tiles (horizontal) × 9 tiles (vertical)
+        - No mapa: 1 tile = escala_mapa px (do map_transform_config.json = 20.0)
+        - FOV no mapa = 16×escala x 9×escala pixels
         """
-        try:
-            with open('camera_virtual_config.json', 'r', encoding='utf-8') as f:
-                config = json.load(f)
+        # Calcular tiles visíveis baseado na tela do jogo
+        self.pixels_por_tile_jogo = 100  # 1 tile = 100px na tela do jogo
+        self.tiles_visiveis_x = self.tela_largura / self.pixels_por_tile_jogo  # 1600/100 = 16 tiles
+        self.tiles_visiveis_y = self.tela_altura / self.pixels_por_tile_jogo    # 900/100 = 9 tiles
 
-            self.fov_largura_mapa = config['fov_largura_mapa']
-            self.fov_altura_mapa = config['fov_altura_mapa']
-            self.escala_fov_x = config['escala_fov_x']
-            self.escala_fov_y = config['escala_fov_y']
+        # Converter tiles para pixels no mapa (usando escala do mapa)
+        # pixels_no_mapa = tiles × escala_mapa
+        self.fov_largura_mapa = self.tiles_visiveis_x * self.escala_x  # 16 × escala
+        self.fov_altura_mapa = self.tiles_visiveis_y * self.escala_y   # 9 × escala
 
-            print(f"   ✅ FOV carregado do arquivo: {self.fov_largura_mapa:.0f}x{self.fov_altura_mapa:.0f}px")
+        # Escala do FOV é igual à escala do mapa
+        self.escala_fov_x = self.escala_x
+        self.escala_fov_y = self.escala_y
 
-        except FileNotFoundError:
-            # Valores CORRETOS baseados na análise do grid:
-            # - Tela 1600x900 = 16x9 tiles
-            # - 1 tile no mapa = 11px
-            # - FOV = 16×11 x 9×11 = 176x99px
-            self.fov_largura_mapa = 176.0  # 16 tiles × 11px
-            self.fov_altura_mapa = 99.0    # 9 tiles × 11px
-            self.escala_fov_x = self.tela_largura / self.fov_largura_mapa  # 1600/176 = 9.09
-            self.escala_fov_y = self.tela_altura / self.fov_altura_mapa    # 900/99 = 9.09
-
-            print(f"   📐 FOV calculado (16x9 tiles): {self.fov_largura_mapa:.0f}x{self.fov_altura_mapa:.0f}px")
+        print(f"   📐 FOV calculado: {int(self.tiles_visiveis_x)}x{int(self.tiles_visiveis_y)} tiles = {self.fov_largura_mapa:.0f}x{self.fov_altura_mapa:.0f}px")
 
     def _carregar_matriz_walkable(self):
         """
@@ -521,7 +513,7 @@ class CameraVirtual:
         # Texto
         cv2.putText(
             img,
-            f"FOV: {int(self.fov_largura_mapa)}x{int(self.fov_altura_mapa)}px (escala {self.escala_x:.1f})",
+            f"FOV: {int(self.tiles_visiveis_x)}x{int(self.tiles_visiveis_y)} tiles = {int(self.fov_largura_mapa)}x{int(self.fov_altura_mapa)}px",
             (x1, y1 - 10),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.6,
@@ -740,10 +732,9 @@ class VisualizadorCameraVirtual:
         info_lines = [
             f"Camera Virtual - Debug ao Vivo",
             f"Posicao: ({int(self.camera.pos_x) if self.camera.pos_x else '?'}, {int(self.camera.pos_y) if self.camera.pos_y else '?'})",
-            f"Tela: {self.camera.tela_largura}x{self.camera.tela_altura}px",
-            f"Escala MAPA: {self.camera.escala_x:.2f} (1 tile = {32/self.camera.escala_x:.1f}px)",
-            f"Escala FOV: {self.camera.escala_fov_x:.2f}x{self.camera.escala_fov_y:.2f}",
-            f"FOV: {int(self.camera.fov_largura_mapa)}x{int(self.camera.fov_altura_mapa)}px",
+            f"Tela: {self.camera.tela_largura}x{self.camera.tela_altura}px (1 tile = {self.camera.pixels_por_tile_jogo}px)",
+            f"FOV: {int(self.camera.tiles_visiveis_x)}x{int(self.camera.tiles_visiveis_y)} tiles = {int(self.camera.fov_largura_mapa)}x{int(self.camera.fov_altura_mapa)}px",
+            f"Escala mapa: {self.camera.escala_x:.1f}px/tile",
             f"Validacao Parede: {validacao_status}",
             f"GPS: {self.camera.movimentos_desde_gps}/{self.camera.max_movimentos_sem_gps}",
             f"Historico: {len(self.historico_posicoes)} pos",
@@ -987,14 +978,13 @@ if __name__ == "__main__":
         print("=" * 70)
         print("\n📐 CÁLCULO DA ESCALA CORRETA:")
         print("   - Tela do jogo: 1 tile = 100px (grid visível)")
-        print("   - Mapa mundo: 1 tile = 11px")
-        print("   - Escala correta: 100 ÷ 11 = 9.09")
-        print("   - FOV: 16×9 tiles = 176×99px no mapa")
+        print("   - Mapa mundo: 1 tile = 20px (escala do map_transform_config.json)")
+        print("   - FOV: 16×9 tiles = 320×180px no mapa")
         print("=" * 70)
 
         # Estado do controle interativo
         direcao = 'direita'  # 'direita', 'esquerda', 'cima', 'baixo'
-        pixels_clique = 11  # Quantidade de PIXELS do clique (distância no mundo - mínimo descoberto)
+        pixels_clique = 20  # Quantidade de PIXELS do clique (distância no mundo = 1 tile no mapa)
 
         while visualizador.rodando:
             # Mostrar estado atual
