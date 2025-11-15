@@ -70,6 +70,7 @@ class CameraVirtual:
 
         # Carregar matriz walkable para validação de paredes
         self._carregar_matriz_walkable()
+        self.validacao_parede_ativa = True  # Pode ser desabilitada no modo interativo
 
         # Imprimir informações de inicialização
         print("🎥 Câmera Virtual inicializada!")
@@ -94,16 +95,25 @@ class CameraVirtual:
             self.escala_y = config['escala']['y']
 
         except FileNotFoundError:
-            # Fallback: usar escala padrão do GPS (0.2x)
-            # escala = 1 / 0.2 = 5.0
+            # Fallback: usar escala calculada baseada no grid
+            # No jogo: 1 tile = 100px na tela
+            # No mapa: 1 tile = 11px
+            # Escala = 100 / 11 = 9.09
             print("   ⚠️ map_transform_config.json não encontrado")
-            print("   Usando escala padrão: 5.0 (GPS 0.2x)")
-            self.escala_x = 5.0
-            self.escala_y = 5.0
+            print("   Usando escala calculada: 9.09 (100px tela ÷ 11px mundo)")
+            self.escala_x = 9.09
+            self.escala_y = 9.09
 
     def _carregar_config_fov(self):
         """
         Carrega configuração de FOV salva ou usa padrão
+
+        CÁLCULO DO FOV:
+        - Tela do jogo: 1600x900px
+        - No jogo: 1 tile = 100px (visível na tela)
+        - Visão: 16x9 tiles (1600÷100 = 16, 900÷100 = 9)
+        - No mapa mundo: 1 tile = 11px
+        - Logo: FOV = 16×11 x 9×11 = 176x99 pixels no mapa mundo
         """
         try:
             with open('camera_virtual_config.json', 'r', encoding='utf-8') as f:
@@ -117,13 +127,16 @@ class CameraVirtual:
             print(f"   ✅ FOV carregado do arquivo: {self.fov_largura_mapa:.0f}x{self.fov_altura_mapa:.0f}px")
 
         except FileNotFoundError:
-            # Valores padrão medidos no Photoshop
-            self.fov_largura_mapa = 68.0
-            self.fov_altura_mapa = 38.0
-            self.escala_fov_x = self.tela_largura / self.fov_largura_mapa  # 23.53
-            self.escala_fov_y = self.tela_altura / self.fov_altura_mapa    # 23.68
+            # Valores CORRETOS baseados na análise do grid:
+            # - Tela 1600x900 = 16x9 tiles
+            # - 1 tile no mapa = 11px
+            # - FOV = 16×11 x 9×11 = 176x99px
+            self.fov_largura_mapa = 176.0  # 16 tiles × 11px
+            self.fov_altura_mapa = 99.0    # 9 tiles × 11px
+            self.escala_fov_x = self.tela_largura / self.fov_largura_mapa  # 1600/176 = 9.09
+            self.escala_fov_y = self.tela_altura / self.fov_altura_mapa    # 900/99 = 9.09
 
-            print(f"   📐 FOV padrão (Photoshop): {self.fov_largura_mapa:.0f}x{self.fov_altura_mapa:.0f}px")
+            print(f"   📐 FOV calculado (16x9 tiles): {self.fov_largura_mapa:.0f}x{self.fov_altura_mapa:.0f}px")
 
     def _carregar_matriz_walkable(self):
         """
@@ -145,6 +158,9 @@ class CameraVirtual:
         """
         Valida se posição no mundo é andável (não é parede)
 
+        IMPORTANTE: Valida uma ÁREA 3x3 ao redor do ponto para compensar
+        possíveis erros de alinhamento da matriz ou drift do GPS
+
         Args:
             x_mundo: coordenada X no mundo
             y_mundo: coordenada Y no mundo
@@ -152,17 +168,27 @@ class CameraVirtual:
         Returns:
             bool: True se andável, False se parede ou fora do mapa
         """
-        if self.matriz_walkable is None:
+        if self.matriz_walkable is None or not self.validacao_parede_ativa:
             return True  # Sem validação, aceitar tudo
 
+        # Arredondar para centro do pixel
+        x = int(round(x_mundo))
+        y = int(round(y_mundo))
+
         # Verificar limites
-        if x_mundo < 0 or x_mundo >= self.mundo_largura:
+        if x < 1 or x >= self.mundo_largura - 1:
             return False
-        if y_mundo < 0 or y_mundo >= self.mundo_altura:
+        if y < 1 or y >= self.mundo_altura - 1:
             return False
 
-        # Verificar walkability (matriz em [y, x])
-        return self.matriz_walkable[int(y_mundo), int(x_mundo)] == 1
+        # Verificar área 3x3 ao redor do ponto (compensar drift/alinhamento)
+        # Se QUALQUER pixel na área for andável, considerar OK
+        for dy in [-1, 0, 1]:
+            for dx in [-1, 0, 1]:
+                if self.matriz_walkable[y + dy, x + dx] == 1:
+                    return True  # Pelo menos um pixel andável encontrado
+
+        return False  # Toda área é parede
 
     def inicializar_posicao(self):
         """
@@ -202,6 +228,11 @@ class CameraVirtual:
         1. Converter mundo → tela do jogo DIRETO
         2. Clicar no chão
 
+        ESCALA CORRETA:
+        - No jogo: 1 tile = 100px na tela
+        - No mapa: 1 tile = 11px
+        - Escala = 100px tela ÷ 11px mundo = 9.09
+
         Args:
             x_mundo, y_mundo: Coordenadas absolutas no mundo
 
@@ -218,9 +249,9 @@ class CameraVirtual:
         delta_x = x_mundo - self.pos_x
         delta_y = y_mundo - self.pos_y
 
-        # 2. Aplicar escala (igual ao navegador)
+        # 2. Aplicar escala correta: 9.09 (100px tela ÷ 11px mundo)
         #    x_tela = centro + (delta_mundo * escala)
-        #    Com escala 20.0: 1px mundo = 20px tela
+        #    Com escala 9.09: 11px mundo = 100px tela (1 tile)
         x_tela = self.centro_x + (delta_x * self.escala_x)
         y_tela = self.centro_y + (delta_y * self.escala_y)
 
@@ -705,14 +736,15 @@ class VisualizadorCameraVirtual:
         cv2.addWeighted(overlay, 0.7, img, 0.3, 0, img)
 
         # Informações
+        validacao_status = "ON" if self.camera.validacao_parede_ativa else "OFF"
         info_lines = [
             f"Camera Virtual - Debug ao Vivo",
             f"Posicao: ({int(self.camera.pos_x) if self.camera.pos_x else '?'}, {int(self.camera.pos_y) if self.camera.pos_y else '?'})",
             f"Tela: {self.camera.tela_largura}x{self.camera.tela_altura}px",
-            f"Escala MAPA: {self.camera.escala_x:.1f}x{self.camera.escala_y:.1f}",
+            f"Escala MAPA: {self.camera.escala_x:.2f} (1 tile = {32/self.camera.escala_x:.1f}px)",
             f"Escala FOV: {self.camera.escala_fov_x:.2f}x{self.camera.escala_fov_y:.2f}",
             f"FOV: {int(self.camera.fov_largura_mapa)}x{int(self.camera.fov_altura_mapa)}px",
-            f"1 tile (32px tela) = {32/self.camera.escala_x:.1f}px mundo",
+            f"Validacao Parede: {validacao_status}",
             f"GPS: {self.camera.movimentos_desde_gps}/{self.camera.max_movimentos_sem_gps}",
             f"Historico: {len(self.historico_posicoes)} pos",
             f"Zoom: {self.zoom_level:.1f}x"
@@ -945,6 +977,7 @@ if __name__ == "__main__":
         print("  [+] [-] - Aumentar/diminuir FOV (largura)")
         print("  [9] [0] - Aumentar/diminuir FOV (altura)")
         print("  [M] [N] - Aumentar/diminuir ESCALA (±0.1)")
+        print("  [V] - Toggle validação de parede")
         print("  [SPACE] - Executar movimento no jogo")
         print("  [X] - Salvar configurações (FOV + ESCALA)")
         print("  [G] - Forçar correção GPS")
@@ -952,13 +985,16 @@ if __name__ == "__main__":
         print("  [H] - Toggle histórico")
         print("  [ESC] - Sair")
         print("=" * 70)
-        print("\n⚠️ IMPORTANTE: Se 12px mundo = 1 tile, a escala correta deveria ser ~2.67")
-        print("   (1 tile = 32px tela, então: 32 ÷ 12 = 2.67)")
+        print("\n📐 CÁLCULO DA ESCALA CORRETA:")
+        print("   - Tela do jogo: 1 tile = 100px (grid visível)")
+        print("   - Mapa mundo: 1 tile = 11px")
+        print("   - Escala correta: 100 ÷ 11 = 9.09")
+        print("   - FOV: 16×9 tiles = 176×99px no mapa")
         print("=" * 70)
 
         # Estado do controle interativo
         direcao = 'direita'  # 'direita', 'esquerda', 'cima', 'baixo'
-        pixels_clique = 32  # Quantidade de PIXELS do clique (distância no mundo)
+        pixels_clique = 11  # Quantidade de PIXELS do clique (distância no mundo - mínimo descoberto)
 
         while visualizador.rodando:
             # Mostrar estado atual
@@ -1090,6 +1126,9 @@ if __name__ == "__main__":
             elif key == ord('h') or key == ord('H'):
                 visualizador.mostrar_historico = not visualizador.mostrar_historico
                 print(f"\n   → Histórico: {'ON' if visualizador.mostrar_historico else 'OFF'}")
+            elif key == ord('v') or key == ord('V'):
+                camera.validacao_parede_ativa = not camera.validacao_parede_ativa
+                print(f"\n   → Validação de Parede: {'ON' if camera.validacao_parede_ativa else 'OFF (DESABILITADA)'}")
 
         print("\n\n✅ Modo interativo encerrado!")
     else:
