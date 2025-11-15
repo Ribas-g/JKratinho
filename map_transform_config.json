@@ -4,8 +4,8 @@
     "y": 450
   },
   "escala": {
-    "x": 20.0,
-    "y": 20.0
+    "x": 4.790419161676646,
+    "y": 4.761904761904762
   },
-  "observacoes": "Calibrado manualmente usando calibrar_mapa_manual.py - Teste: 6 tiles esquerda = 120 pixels no mapa"
+  "observacoes": "Calibrado via medição Photoshop - FOV visão do jogo: 334×189px no mapa mundo. Escala calculada: 4.79×4.76. Valor exato da medição"
 }
