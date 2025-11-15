@@ -17,7 +17,7 @@ VANTAGENS:
 - 🗺️ Navegação fluida
 
 LIMITES:
-- Campo de visão limitado (~6 tiles ou 192 pixels do centro)
+- Campo de visão limitado (16×9 tiles = 320×180px no mapa mundo)
 - Precisa GPS periódico para evitar erro acumulado
 """
 
@@ -96,12 +96,12 @@ class CameraVirtual:
 
         except FileNotFoundError:
             # Fallback: usar escala padrão calibrada
-            # map_transform_config.json padrão usa 20.0
-            # (20 pixels no mapa = 1 tile)
+            # Escala 5.0 = FOV de 320×180px (16×9 tiles)
+            # (1 pixel mundo × 5.0 = 5 pixels tela)
             print("   ⚠️ map_transform_config.json não encontrado")
-            print("   Usando escala padrão: 20.0 (20px no mapa = 1 tile)")
-            self.escala_x = 20.0
-            self.escala_y = 20.0
+            print("   Usando escala padrão: 5.0 (FOV 320×180px)")
+            self.escala_x = 5.0
+            self.escala_y = 5.0
 
     def _carregar_config_fov(self):
         """
@@ -109,20 +109,23 @@ class CameraVirtual:
 
         LÓGICA CORRETA:
         - Tela do jogo: 1600x900px
-        - 1 tile no jogo = 100px (quadrado visível na tela)
-        - Logo: FOV = 16 tiles (horizontal) × 9 tiles (vertical)
-        - No mapa: 1 tile = escala_mapa px (do map_transform_config.json = 20.0)
-        - FOV no mapa = 16×escala x 9×escala pixels
+        - Escala: 5.0 (1px mundo → 5px tela)
+        - FOV no mundo = Tela / Escala = 1600/5.0 = 320×180px
+        - 1 tile no mundo = 20px
+        - Tiles visíveis = 320/20 = 16 tiles (horizontal) × 180/20 = 9 tiles (vertical)
         """
-        # Calcular tiles visíveis baseado na tela do jogo
-        self.pixels_por_tile_jogo = 100  # 1 tile = 100px na tela do jogo
-        self.tiles_visiveis_x = self.tela_largura / self.pixels_por_tile_jogo  # 1600/100 = 16 tiles
-        self.tiles_visiveis_y = self.tela_altura / self.pixels_por_tile_jogo    # 900/100 = 9 tiles
+        # Calcular FOV no mapa mundo (INVERSO da escala!)
+        # fov_mundo = tela_jogo / escala
+        self.fov_largura_mapa = self.tela_largura / self.escala_x  # 1600 / 5.0 = 320px
+        self.fov_altura_mapa = self.tela_altura / self.escala_y    # 900 / 5.0 = 180px
 
-        # Converter tiles para pixels no mapa (usando escala do mapa)
-        # pixels_no_mapa = tiles × escala_mapa
-        self.fov_largura_mapa = self.tiles_visiveis_x * self.escala_x  # 16 × escala
-        self.fov_altura_mapa = self.tiles_visiveis_y * self.escala_y   # 9 × escala
+        # Calcular tiles visíveis (1 tile no mundo = 20px)
+        self.pixels_por_tile_mundo = 20.0  # 1 tile = 20px no mapa mundo
+        self.tiles_visiveis_x = self.fov_largura_mapa / self.pixels_por_tile_mundo  # 320/20 = 16 tiles
+        self.tiles_visiveis_y = self.fov_altura_mapa / self.pixels_por_tile_mundo   # 180/20 = 9 tiles
+
+        # 1 tile na tela do jogo (para exibição)
+        self.pixels_por_tile_jogo = 100  # 1 tile = 100px na tela do jogo
 
         # Escala do FOV é igual à escala do mapa
         self.escala_fov_x = self.escala_x
@@ -221,9 +224,9 @@ class CameraVirtual:
         2. Clicar no chão
 
         ESCALA CORRETA:
-        - No jogo: 1 tile = 100px na tela
-        - No mapa: 1 tile = 11px
-        - Escala = 100px tela ÷ 11px mundo = 9.09
+        - Tela do jogo: 1600×900px
+        - Mapa mundo: FOV = 320×180px
+        - Escala = 1600 ÷ 320 = 5.0 (1px mundo = 5px tela)
 
         Args:
             x_mundo, y_mundo: Coordenadas absolutas no mundo
@@ -241,9 +244,9 @@ class CameraVirtual:
         delta_x = x_mundo - self.pos_x
         delta_y = y_mundo - self.pos_y
 
-        # 2. Aplicar escala correta: 9.09 (100px tela ÷ 11px mundo)
+        # 2. Aplicar escala correta: 5.0 (320px mundo → 1600px tela)
         #    x_tela = centro + (delta_mundo * escala)
-        #    Com escala 9.09: 11px mundo = 100px tela (1 tile)
+        #    Com escala 5.0: 1px mundo = 5px tela
         x_tela = self.centro_x + (delta_x * self.escala_x)
         y_tela = self.centro_y + (delta_y * self.escala_y)
 
@@ -977,8 +980,9 @@ if __name__ == "__main__":
         print("  [ESC] - Sair")
         print("=" * 70)
         print("\n📐 CÁLCULO DA ESCALA CORRETA:")
-        print("   - Tela do jogo: 1 tile = 100px (grid visível)")
-        print("   - Mapa mundo: 1 tile = 20px (escala do map_transform_config.json)")
+        print("   - Tela do jogo: 1600×900px")
+        print("   - Mapa mundo: 1 tile = 20px")
+        print("   - Escala: 5.0 (1px mundo = 5px tela)")
         print("   - FOV: 16×9 tiles = 320×180px no mapa")
         print("=" * 70)
 
