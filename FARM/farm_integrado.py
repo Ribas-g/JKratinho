@@ -375,12 +375,8 @@ class FarmIntegrado:
             # Abrir mapa, clicar no waypoint, fechar mapa
             print("   🗺️ Abrindo mapa para clicar waypoint...")
 
-            # Abrir mapa
-            self.farm_bot.executar_tap(
-                self.farm_bot.config.map_button_x,
-                self.farm_bot.config.map_button_y,
-                "📍 Abrir mapa"
-            )
+            # Abrir mapa usando método do GPS
+            self.gps.click_button('open')
             time.sleep(0.4)  # Esperar mapa abrir
 
             # Converter coordenadas mundo → tela do mapa
@@ -389,16 +385,12 @@ class FarmIntegrado:
 
             print(f"   📍 Clicando waypoint no mapa: tela ({map_x}, {map_y}) = mundo ({wp_x}, {wp_y})")
 
-            # Clicar no waypoint
-            self.farm_bot.executar_tap(map_x, map_y, "🎯 Clicar waypoint")
+            # Clicar no waypoint via ADB
+            self.gps.device.shell(f"input tap {map_x} {map_y}")
             time.sleep(0.3)
 
             # Fechar mapa (personagem continua andando automaticamente)
-            self.farm_bot.executar_tap(
-                self.farm_bot.config.map_button_x,
-                self.farm_bot.config.map_button_y,
-                "🗺️ Fechar mapa"
-            )
+            self.gps.click_button('close')
 
             print("   ✅ Navegação iniciada! Personagem andando para centro...")
             print("   👀 Main loop monitorará mobs (cancela se encontrar)")
@@ -433,15 +425,11 @@ class FarmIntegrado:
         print(f"   📍 Clicando centro: tela ({map_x}, {map_y}) = mundo ({center_x}, {center_y})")
 
         # Clicar no centro (mapa já está aberto do GPS)
-        self.farm_bot.executar_tap(map_x, map_y, "🎯 Clicar centro")
+        self.gps.device.shell(f"input tap {map_x} {map_y}")
         time.sleep(0.3)
 
         # Fechar mapa
-        self.farm_bot.executar_tap(
-            self.farm_bot.config.map_button_x,
-            self.farm_bot.config.map_button_y,
-            "🗺️ Fechar mapa"
-        )
+        self.gps.click_button('close')
 
         print("   ✅ Navegação iniciada (direta)!")
         time.sleep(2.0)
