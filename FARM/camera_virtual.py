@@ -149,7 +149,7 @@ class CameraVirtual:
             self.mundo_largura = None
             self.mundo_altura = None
 
-    def validar_posicao(self, x_mundo, y_mundo):
+    def validar_posicao(self, x_mundo, y_mundo, debug=False):
         """
         Valida se posição no mundo é andável (não é parede)
 
@@ -159,6 +159,7 @@ class CameraVirtual:
         Args:
             x_mundo: coordenada X no mundo
             y_mundo: coordenada Y no mundo
+            debug: Se True, mostra informações detalhadas
 
         Returns:
             bool: True se andável, False se parede ou fora do mapa
@@ -170,20 +171,45 @@ class CameraVirtual:
         x = int(round(x_mundo))
         y = int(round(y_mundo))
 
+        if debug:
+            print(f"\n   🔍 DEBUG VALIDAÇÃO:")
+            print(f"      Player: ({self.pos_x:.1f}, {self.pos_y:.1f})")
+            print(f"      Target mundo: ({x_mundo:.1f}, {y_mundo:.1f})")
+            print(f"      Target int: ({x}, {y})")
+            print(f"      Limites matriz: [0-{self.mundo_largura}] x [0-{self.mundo_altura}]")
+
         # Verificar limites
         if x < 1 or x >= self.mundo_largura - 1:
+            if debug:
+                print(f"      ❌ FORA DOS LIMITES X: {x} (limites: 1-{self.mundo_largura-1})")
             return False
         if y < 1 or y >= self.mundo_altura - 1:
+            if debug:
+                print(f"      ❌ FORA DOS LIMITES Y: {y} (limites: 1-{self.mundo_altura-1})")
             return False
 
         # Verificar área 3x3 ao redor do ponto (compensar drift/alinhamento)
         # Se QUALQUER pixel na área for andável, considerar OK
+        if debug:
+            print(f"      Verificando área 3x3:")
+
+        andavel_encontrado = False
         for dy in [-1, 0, 1]:
             for dx in [-1, 0, 1]:
-                if self.matriz_walkable[y + dy, x + dx] == 1:
-                    return True  # Pelo menos um pixel andável encontrado
+                valor = self.matriz_walkable[y + dy, x + dx]
+                if debug:
+                    simbolo = "✓" if valor == 1 else "✗"
+                    print(f"         [{y+dy}, {x+dx}] = {valor} {simbolo}")
+                if valor == 1:
+                    andavel_encontrado = True
 
-        return False  # Toda área é parede
+        if debug:
+            if andavel_encontrado:
+                print(f"      ✅ ANDÁVEL (pelo menos 1 pixel livre)")
+            else:
+                print(f"      🚫 PAREDE (toda área bloqueada)")
+
+        return andavel_encontrado
 
     def inicializar_posicao(self):
         """

@@ -310,11 +310,21 @@ class FarmComCamera:
         if x_mundo is None:
             return False
 
-        eh_valido = self.camera.validar_posicao(x_mundo, y_mundo)
+        # PRIMEIRA verificação sem debug
+        eh_valido = self.camera.validar_posicao(x_mundo, y_mundo, debug=False)
 
-        # Se detectou PAREDE, tirar screenshot de debug
-        if not eh_valido and self.ultimo_frame_capturado is not None:
-            self.salvar_screenshot_parede(x_tela, y_tela, x_mundo, y_mundo)
+        # Se detectou PAREDE, REFAZER com debug ativado + screenshot
+        if not eh_valido:
+            print(f"\n   ⚠️ PAREDE DETECTADA!")
+            print(f"      Tela: ({x_tela}, {y_tela})")
+            print(f"      Mundo: ({x_mundo}, {y_mundo})")
+
+            # Refazer validação COM debug para mostrar detalhes
+            self.camera.validar_posicao(x_mundo, y_mundo, debug=True)
+
+            # Tirar screenshot
+            if self.ultimo_frame_capturado is not None:
+                self.salvar_screenshot_parede(x_tela, y_tela, x_mundo, y_mundo)
 
         return eh_valido
 
@@ -593,19 +603,21 @@ class FarmComCamera:
         if frame is not None and self.mostrar_deteccoes:
             img_deteccoes = self.desenhar_deteccoes(frame)
 
-            # Redimensionar para caber na tela
-            h, w = img_deteccoes.shape[:2]
-            scale = 0.8  # 80% do tamanho
-            new_w = int(w * scale)
-            new_h = int(h * scale)
-            img_resized = cv2.resize(img_deteccoes, (new_w, new_h))
+            # Criar janela REDIMENSIONÁVEL se não existir
+            janela_nome = "🎮 Farm Bot - Deteccoes YOLO"
+            try:
+                cv2.getWindowProperty(janela_nome, cv2.WND_PROP_VISIBLE)
+            except:
+                # Janela não existe, criar como WINDOW_NORMAL (redimensionável)
+                cv2.namedWindow(janela_nome, cv2.WINDOW_NORMAL)
+                cv2.resizeWindow(janela_nome, 1280, 720)  # Tamanho inicial
 
-            cv2.imshow("🎮 Farm Bot - Deteccoes YOLO", img_resized)
+            cv2.imshow(janela_nome, img_deteccoes)
             key = cv2.waitKey(1) & 0xFF
             if key == ord('d') or key == ord('D'):
                 self.mostrar_deteccoes = not self.mostrar_deteccoes
                 if not self.mostrar_deteccoes:
-                    cv2.destroyWindow("🎮 Farm Bot - Deteccoes YOLO")
+                    cv2.destroyWindow(janela_nome)
 
     def processar_farm(self):
         """
