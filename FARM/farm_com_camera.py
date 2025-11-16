@@ -28,6 +28,14 @@ from ultralytics import YOLO
 from gps_ncc_realtime import GPSRealtimeNCC
 from FARM.camera_virtual import CameraVirtual
 
+# Importar adbnativeblitz (captura rápida)
+try:
+    from adbnativeblitz import AdbFastScreenshots
+    ADBNATIVEBLITZ_DISPONIVEL = True
+except ImportError:
+    ADBNATIVEBLITZ_DISPONIVEL = False
+    print("⚠️ adbnativeblitz não instalado. Usando screencap padrão.")
+
 
 class VisualizadorFarm:
     """
@@ -255,13 +263,50 @@ class FarmComCamera:
         self.fps_start_time = time.time()
         self.fps_atual = 0
 
+        # Sistema de captura (adbnativeblitz vs screencap)
+        self.usar_adbnativeblitz = ADBNATIVEBLITZ_DISPONIVEL  # Usar se disponível
+        self.adb_stream = None  # Stream do adbnativeblitz
+        self.metodo_captura = "DESCONHECIDO"
+
+        print("🎥 Sistema de captura:")
+        if self.usar_adbnativeblitz:
+            print("   ✅ ADBNATIVEBLITZ ativado (30+ FPS esperado)")
+            self.metodo_captura = "ADBNATIVEBLITZ"
+        else:
+            print("   ⚠️ SCREENCAP RAW (10-15 FPS esperado)")
+            self.metodo_captura = "SCREENCAP_RAW"
+        print()
+
     def inicializar(self):
-        """Inicializa GPS"""
+        """Inicializa GPS e sistema de captura"""
         print("🚀 Inicializando sistema...")
 
         if not self.camera.inicializar_posicao():
             print("❌ Falha ao inicializar GPS!")
             return False
+
+        # Inicializar adbnativeblitz se disponível
+        if self.usar_adbnativeblitz:
+            try:
+                print("   🎥 Iniciando adbnativeblitz stream...")
+                self.adb_stream = AdbFastScreenshots(
+                    adb_path="adb",  # ADB no PATH
+                    device_serial=self.device.serial,
+                    time_interval=179,  # Max 180s por sessão
+                    width=1600,
+                    height=900,
+                    bitrate="20M",  # 20 Mbps
+                    screenshotbuffer=10  # Buffer de 10 frames
+                )
+                # Iniciar stream (entra no context manager)
+                self.adb_stream.__enter__()
+                print("   ✅ Stream iniciado!")
+            except Exception as e:
+                print(f"   ⚠️ Falha ao iniciar adbnativeblitz: {e}")
+                print("   ↪️ Voltando para screencap raw...")
+                self.usar_adbnativeblitz = False
+                self.metodo_captura = "SCREENCAP_RAW"
+                self.adb_stream = None
 
         print("✅ Sistema pronto!")
         return True
@@ -314,14 +359,29 @@ class FarmComCamera:
         """
         Captura screenshot OTIMIZADA
 
-        Método 1 (Padrão): screencap -p (PNG comprimido) - LENTO
-        Método 2 (Otimizado): screencap raw -> decodifica direto - RÁPIDO
-
-        Usa formato raw para 3-5x mais velocidade
+        Métodos disponíveis:
+        1. ADBNATIVEBLITZ (screenrecord H.264): ~30+ FPS - MAIS RÁPIDO
+        2. SCREENCAP RAW (RGBA direto): ~10-15 FPS - RÁPIDO
+        3. SCREENCAP PNG (fallback): ~5 FPS - LENTO
         """
+        # MÉTODO 1: ADBNATIVEBLITZ (mais rápido)
+        if self.usar_adbnativeblitz and self.adb_stream is not None:
+            try:
+                # Pegar próximo frame do stream
+                frame = next(iter(self.adb_stream))
+                if frame is not None:
+                    return frame
+                # Se falhou, tentar screencap raw
+            except Exception as e:
+                # Stream falhou, desabilitar
+                print(f"   ⚠️ adbnativeblitz stream falhou: {e}")
+                print("   ↪️ Voltando para screencap raw...")
+                self.usar_adbnativeblitz = False
+                self.metodo_captura = "SCREENCAP_RAW"
+
+        # MÉTODO 2: SCREENCAP RAW (rápido)
         try:
-            # MÉTODO OTIMIZADO: screencap sem compressão PNG
-            # Muito mais rápido que screencap -p
+            # screencap sem compressão PNG
             screenshot_bytes = self.device.shell("screencap", encoding=None)
 
             if not screenshot_bytes or len(screenshot_bytes) < 1000:
@@ -466,8 +526,9 @@ class FarmComCamera:
 
         # HUD
         cv2.putText(img, f"FPS: {self.fps_atual:.1f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-        cv2.putText(img, f"Deteccoes: {len(self.deteccoes_atuais)}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-        cv2.putText(img, f"Ultima acao: {self.last_action}", (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        cv2.putText(img, f"Captura: {self.metodo_captura}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+        cv2.putText(img, f"Deteccoes: {len(self.deteccoes_atuais)}", (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        cv2.putText(img, f"Ultima acao: {self.last_action}", (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
         return img
 
@@ -619,6 +680,15 @@ class FarmComCamera:
             except Exception as e:
                 print(f"❌ Erro: {e}")
                 time.sleep(1)
+
+        # Cleanup adbnativeblitz stream
+        if self.adb_stream is not None:
+            try:
+                print("   🛑 Encerrando stream adbnativeblitz...")
+                self.adb_stream.__exit__(None, None, None)
+                print("   ✅ Stream encerrado!")
+            except:
+                pass
 
         print("\n✅ Farm finalizado!")
 
