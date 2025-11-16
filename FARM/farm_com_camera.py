@@ -278,64 +278,15 @@ class FarmComCamera:
         print()
 
     def inicializar(self):
-        """Inicializa GPS e sistema de captura"""
+        """Inicializa GPS"""
         print("🚀 Inicializando sistema...")
 
         if not self.camera.inicializar_posicao():
             print("❌ Falha ao inicializar GPS!")
             return False
 
-        # Inicializar adbnativeblitz se disponível
-        if self.usar_adbnativeblitz:
-            try:
-                print("   🎥 Iniciando adbnativeblitz stream...")
-                print(f"   📱 Device serial: {self.device.serial}")
-
-                # Tentar diferentes caminhos do ADB
-                import shutil
-                adb_path = shutil.which("adb")
-                if adb_path is None:
-                    # Tentar caminho padrão Windows
-                    import os
-                    possible_paths = [
-                        r"C:\Android\android-sdk\platform-tools\adb.exe",
-                        r"C:\Program Files (x86)\Android\android-sdk\platform-tools\adb.exe",
-                        r"C:\Users\{}\AppData\Local\Android\Sdk\platform-tools\adb.exe".format(os.getenv('USERNAME', 'user')),
-                        "adb"  # Fallback
-                    ]
-                    for path in possible_paths:
-                        if os.path.exists(path):
-                            adb_path = path
-                            break
-                    if adb_path is None:
-                        adb_path = "adb"
-
-                print(f"   🔧 ADB path: {adb_path}")
-
-                self.adb_stream = AdbFastScreenshots(
-                    adb_path=adb_path,
-                    device_serial=self.device.serial,
-                    time_interval=179,  # Max 180s por sessão
-                    width=1600,
-                    height=900,
-                    bitrate="20M",  # 20 Mbps
-                    screenshotbuffer=10,  # Buffer de 10 frames
-                    go_idle=0.001  # Baixa latência
-                )
-                # Iniciar stream (entra no context manager)
-                self.adb_stream.__enter__()
-                print("   ✅ Stream iniciado!")
-            except Exception as e:
-                print(f"   ⚠️ Falha ao iniciar adbnativeblitz: {e}")
-                print(f"   📝 Tipo de erro: {type(e).__name__}")
-                print("   ↪️ Voltando para screencap raw...")
-                print("   💡 Dica: adbnativeblitz pode ter problemas no Windows")
-                print("      Use screencap raw (10-15 FPS) por enquanto")
-                self.usar_adbnativeblitz = False
-                self.metodo_captura = "SCREENCAP_RAW"
-                self.adb_stream = None
-
         print("✅ Sistema pronto!")
+        print()
         return True
 
     def tela_para_mundo(self, x_tela, y_tela):
@@ -384,29 +335,12 @@ class FarmComCamera:
 
     def capturar_frame(self):
         """
-        Captura screenshot OTIMIZADA
+        Captura screenshot usando SCREENCAP RAW
 
-        Métodos disponíveis:
-        1. ADBNATIVEBLITZ (screenrecord H.264): ~30+ FPS - MAIS RÁPIDO
-        2. SCREENCAP RAW (RGBA direto): ~10-15 FPS - RÁPIDO
-        3. SCREENCAP PNG (fallback): ~5 FPS - LENTO
+        Usado apenas quando adbnativeblitz não está disponível
+        ou como fallback.
         """
-        # MÉTODO 1: ADBNATIVEBLITZ (mais rápido)
-        if self.usar_adbnativeblitz and self.adb_stream is not None:
-            try:
-                # Pegar próximo frame do stream
-                frame = next(iter(self.adb_stream))
-                if frame is not None:
-                    return frame
-                # Se falhou, tentar screencap raw
-            except Exception as e:
-                # Stream falhou, desabilitar
-                print(f"   ⚠️ adbnativeblitz stream falhou: {e}")
-                print("   ↪️ Voltando para screencap raw...")
-                self.usar_adbnativeblitz = False
-                self.metodo_captura = "SCREENCAP_RAW"
-
-        # MÉTODO 2: SCREENCAP RAW (rápido)
+        # SCREENCAP RAW
         try:
             # screencap sem compressão PNG
             screenshot_bytes = self.device.shell("screencap", encoding=None)
@@ -652,22 +586,8 @@ class FarmComCamera:
             # print("   💤 Aguardando targets...")
             self.last_action_time = tempo_atual
 
-    def run(self):
-        """Loop principal"""
-        if not self.inicializar():
-            return
-
-        print("\n" + "=" * 70)
-        print("🎮 FARM BOT ATIVO!")
-        print("=" * 70)
-        print("Controles:")
-        print("  ESC - Fechar visualizador (para farm)")
-        print("  Ctrl+C - Parar farm")
-        print("=" * 70)
-        print()
-
-        self.running = True
-
+    def _loop_principal_screencap(self):
+        """Loop principal usando screencap raw"""
         while self.running:
             try:
                 # Capturar frame
@@ -708,14 +628,120 @@ class FarmComCamera:
                 print(f"❌ Erro: {e}")
                 time.sleep(1)
 
-        # Cleanup adbnativeblitz stream
-        if self.adb_stream is not None:
+    def _loop_principal_adbnativeblitz(self):
+        """Loop principal usando adbnativeblitz (com context manager)"""
+        import shutil
+        adb_path = shutil.which("adb")
+        if adb_path is None:
+            # Tentar caminho padrão Windows
+            import os
+            possible_paths = [
+                r"C:\Android\android-sdk\platform-tools\adb.exe",
+                r"C:\Program Files (x86)\Android\android-sdk\platform-tools\adb.exe",
+                r"C:\Users\{}\AppData\Local\Android\Sdk\platform-tools\adb.exe".format(os.getenv('USERNAME', 'user')),
+                "adb"
+            ]
+            for path in possible_paths:
+                if os.path.exists(path):
+                    adb_path = path
+                    break
+            if adb_path is None:
+                adb_path = "adb"
+
+        print(f"   🔧 ADB path: {adb_path}")
+        print(f"   📱 Device: {self.device.serial}")
+        print("   🎬 Iniciando stream H.264...")
+
+        try:
+            # USAR WITH STATEMENT CORRETAMENTE
+            with AdbFastScreenshots(
+                adb_path=adb_path,
+                device_serial=self.device.serial,
+                time_interval=179,
+                width=1600,
+                height=900,
+                bitrate="20M",
+                use_busybox=False,
+                connect_to_device=True,
+                screenshotbuffer=10,
+                go_idle=0.001
+            ) as adb_stream:
+                print("   ✅ Stream ativo!")
+
+                # Loop dentro do context manager
+                for frame in adb_stream:
+                    if frame is None:
+                        continue
+
+                    if not self.running:
+                        break
+
+                    # Calcular FPS
+                    self.fps_counter += 1
+                    tempo_decorrido = time.time() - self.fps_start_time
+                    if tempo_decorrido >= 1.0:
+                        self.fps_atual = self.fps_counter / tempo_decorrido
+                        self.fps_counter = 0
+                        self.fps_start_time = time.time()
+
+                    # Detectar objetos
+                    self.deteccoes_atuais = self.detectar_objetos(frame)
+
+                    # 🎯 LÓGICA DE FARM
+                    self.processar_farm()
+
+                    # Atualizar visualizadores
+                    self.atualizar_visualizador(frame)
+
+                    # Aguardar
+                    time.sleep(0.001)  # Mínimo, deixar stream controlar velocidade
+
+                    # Verificar se visualizador fechou
+                    if self.visualizador and not self.visualizador.rodando:
+                        self.running = False
+                        break
+
+        except KeyboardInterrupt:
+            print("\n\n⚠️ Interrompido")
+            self.running = False
+        except Exception as e:
+            print(f"\n❌ Erro no stream adbnativeblitz: {e}")
+            print(f"   Tipo: {type(e).__name__}")
+            import traceback
+            traceback.print_exc()
+            raise
+
+    def run(self):
+        """Loop principal"""
+        if not self.inicializar():
+            return
+
+        print("\n" + "=" * 70)
+        print("🎮 FARM BOT ATIVO!")
+        print("=" * 70)
+        print("Controles:")
+        print("  ESC - Fechar visualizador (para farm)")
+        print("  Ctrl+C - Parar farm")
+        print("=" * 70)
+        print()
+
+        self.running = True
+
+        # Escolher loop baseado no método de captura
+        if self.usar_adbnativeblitz and ADBNATIVEBLITZ_DISPONIVEL:
+            print("🚀 Usando ADBNATIVEBLITZ (H.264 stream)...")
             try:
-                print("   🛑 Encerrando stream adbnativeblitz...")
-                self.adb_stream.__exit__(None, None, None)
-                print("   ✅ Stream encerrado!")
-            except:
-                pass
+                self._loop_principal_adbnativeblitz()
+            except Exception as e:
+                print(f"\n⚠️ adbnativeblitz falhou: {e}")
+                print("   ↪️ Voltando para screencap raw...")
+                self.usar_adbnativeblitz = False
+                self.metodo_captura = "SCREENCAP_RAW"
+                self.running = True
+                self._loop_principal_screencap()
+        else:
+            print("🔧 Usando SCREENCAP RAW...")
+            self._loop_principal_screencap()
 
         print("\n✅ Farm finalizado!")
 
