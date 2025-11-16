@@ -105,11 +105,12 @@
     "archer": {
       "name": "Arqueiro",
       "kiting_style": "ranged",
-      "ideal_distance": 2.5,
-      "min_distance": 1.5,
-      "max_distance": 4.0,
+      "ideal_distance": 2.0,
+      "min_distance": 1.0,
+      "max_distance": 3.5,
       "movement_pattern": "strafe",
-      "attack_cooldown": 0.4
+      "attack_cooldown": 0.4,
+      "comentario": "Kiting menos agressivo: reduzido distâncias para atacar mais perto"
     },
     "warrior": {
       "name": "Guerreiro",
@@ -118,16 +119,18 @@
       "min_distance": 0.5,
       "max_distance": 1.5,
       "movement_pattern": "circle",
-      "attack_cooldown": 0.5
+      "attack_cooldown": 0.5,
+      "comentario": "Melee: distâncias mantidas (já próximo)"
     },
     "mage": {
       "name": "Mago",
       "kiting_style": "ranged",
-      "ideal_distance": 3.0,
-      "min_distance": 2.0,
-      "max_distance": 5.0,
+      "ideal_distance": 2.5,
+      "min_distance": 1.5,
+      "max_distance": 4.0,
       "movement_pattern": "strafe",
-      "attack_cooldown": 0.4
+      "attack_cooldown": 0.4,
+      "comentario": "Kiting menos agressivo: reduzido distâncias para atacar mais perto"
     }
   }
 }

@@ -239,12 +239,57 @@ class FarmIntegrado:
 
         return dist <= radius, dist, radius
 
-    def procurar_mobs_ativamente(self):
+    def procurar_mobs_ativamente(self, atualizar_gps=False):
         """
         Movimento ativo: Se não houver mobs visíveis, move-se pela área
         para encontrar mais mobs (SEM SAIR DO BIOMA)
+
+        GPS INTELIGENTE:
+        - Atualiza GPS antes de procurar mobs (evita desorientação)
+        - Usa GPS a cada 5-10 movimentos para manter precisão
+        - GPS rápido: ~0.3-0.5s (abre/fecha mapa rapidamente)
+
+        NAVEGAÇÃO PARA CENTRO:
+        - Se na borda (>70% do raio), navega PARA o centro usando A*
+        - Monitora mobs durante navegação (cancela se encontrar)
+        - Usa pathfinding para evitar paredes
         """
         print("   🔍 Procurando mobs na área...")
+
+        # GPS INTELIGENTE: Atualizar posição se solicitado
+        na_borda = False
+        pos_atual = None
+
+        if atualizar_gps:
+            print("   📡 Atualizando GPS antes de procurar...")
+            try:
+                pos = self.gps.get_current_position(keep_map_open=False, verbose=False)
+                if pos and 'x' in pos and 'y' in pos:
+                    pos_atual = pos
+                    print(f"   ✅ Posição atual: ({pos['x']:.0f}, {pos['y']:.0f})")
+
+                    # Verificar se ainda está na área de farm
+                    zone_data = self.zones[self.selected_zone]
+                    center_x = zone_data['farm_area']['center']['x']
+                    center_y = zone_data['farm_area']['center']['y']
+                    radius = zone_data['farm_area']['radius']
+
+                    dist = math.sqrt((pos['x'] - center_x)**2 + (pos['y'] - center_y)**2)
+
+                    if dist > radius:
+                        print(f"   ⚠️ FORA DA ÁREA DE FARM! Distância: {dist:.0f}/{radius} pixels")
+                        print("   🔙 Voltando para zona de farm...")
+                        # Voltar para zona
+                        self.navegar_para_zona()
+                        return
+                    elif dist > radius * 0.7:  # borda_threshold
+                        print(f"   ⚠️ NA BORDA da área ({dist:.0f}/{radius}px, >70%)")
+                        na_borda = True
+                    else:
+                        print(f"   ✅ Dentro da área (distância: {dist:.0f}/{radius}px)")
+
+            except Exception as e:
+                print(f"   ⚠️ Erro ao atualizar GPS: {e}")
 
         # Capturar frame para detecção
         img = self.farm_bot.capturar_frame()
@@ -260,14 +305,21 @@ class FarmIntegrado:
             # Nenhum mob visível - mover para explorar área
             print("   ➡️ Nenhum mob visível, explorando área...")
 
+            # SE NA BORDA: Navegar para centro usando A*
+            if na_borda and pos_atual:
+                print("   🎯 NA BORDA - Navegando para CENTRO com A*...")
+                self.navegar_para_centro_inteligente(pos_atual)
+                return
+
+            # SENÃO: Movimento aleatório normal
             # Movimento em coordenadas de TELA (não usar GPS)
-            # Calcular ponto aleatório a 3-4 tiles de distância
+            # Calcular ponto aleatório a 2-3 tiles de distância (MENOS AGRESSIVO)
 
             import random
 
-            # Distância aleatória: 3-4 tiles
+            # Distância aleatória: 2-3 tiles (era 3-4, agora menor)
             tile_size = self.farm_bot.config.tile_size
-            distance = random.uniform(tile_size * 3, tile_size * 4)
+            distance = random.uniform(tile_size * 2, tile_size * 3)
 
             # Ângulo aleatório
             angle = random.uniform(0, 2 * math.pi)
@@ -291,7 +343,138 @@ class FarmIntegrado:
             # Executar movimento
             self.farm_bot.executar_tap(move_x, move_y, "🔍 Explorar área")
 
-            time.sleep(1.5)  # Esperar movimento
+            time.sleep(1.2)  # Esperar movimento (era 1.5s, agora 1.2s)
+
+    def navegar_para_centro_inteligente(self, pos_atual):
+        """
+        Navega PARA o centro do bioma usando A* pathfinding
+
+        ESTRATÉGIA INTELIGENTE:
+        - Calcula path A* até o centro
+        - Pega próximo waypoint visível no mapa
+        - Abre mapa, clica no waypoint, fecha mapa
+        - Personagem continua andando automaticamente
+        - Main loop monitora mobs (cancela se encontrar)
+
+        Args:
+            pos_atual: Posição atual do GPS {'x': ..., 'y': ...}
+        """
+        try:
+            print("   🧭 Calculando rota para CENTRO com A*...")
+
+            # Dados da zona
+            zone_data = self.zones[self.selected_zone]
+            center_x = zone_data['farm_area']['center']['x']
+            center_y = zone_data['farm_area']['center']['y']
+
+            x_atual = int(pos_atual['x'])
+            y_atual = int(pos_atual['y'])
+
+            print(f"      Posição atual: ({x_atual}, {y_atual})")
+            print(f"      Centro bioma: ({center_x}, {center_y})")
+
+            # Usar pathfinder do navegador para calcular caminho
+            if not self.navegador or not hasattr(self.navegador, 'pathfinder'):
+                print("   ⚠️ Pathfinder não disponível, usando movimento direto")
+                self._navegar_direto_para_centro(center_x, center_y)
+                return
+
+            # Calcular path A*
+            path = self.navegador.pathfinder.find_path(x_atual, y_atual, center_x, center_y)
+
+            if not path or len(path) < 2:
+                print("   ⚠️ Pathfinding falhou, tentando movimento direto...")
+                self._navegar_direto_para_centro(center_x, center_y)
+                return
+
+            print(f"   ✅ Path calculado: {len(path)} waypoints")
+
+            # ESTRATÉGIA: Pegar waypoint intermediário (não ir direto ao centro)
+            # Queremos apenas nos APROXIMAR do centro, não ir exatamente até lá
+            # Pegar waypoint a 30-50% do caminho
+
+            import random
+            progresso = random.uniform(0.3, 0.5)  # 30-50% do caminho
+            indice_waypoint = min(int(len(path) * progresso), len(path) - 1)
+            indice_waypoint = max(1, indice_waypoint)  # No mínimo waypoint 1
+
+            wp_x, wp_y = path[indice_waypoint]
+
+            print(f"   🎯 Waypoint escolhido: ({wp_x}, {wp_y}) - {indice_waypoint+1}/{len(path)} ({progresso*100:.0f}% do caminho)")
+
+            # Abrir mapa, clicar no waypoint, fechar mapa
+            print("   🗺️ Abrindo mapa para clicar waypoint...")
+
+            # Abrir mapa
+            self.farm_bot.executar_tap(
+                self.farm_bot.config.map_button_x,
+                self.farm_bot.config.map_button_y,
+                "📍 Abrir mapa"
+            )
+            time.sleep(0.4)  # Esperar mapa abrir
+
+            # Converter coordenadas mundo → tela do mapa
+            # USAR FUNÇÃO DO NAVEGADOR (já tem a lógica correta com escala 5.0!)
+            map_x, map_y = self.navegador.mundo_to_tela(wp_x, wp_y, x_atual, y_atual)
+
+            print(f"   📍 Clicando waypoint no mapa: tela ({map_x}, {map_y}) = mundo ({wp_x}, {wp_y})")
+
+            # Clicar no waypoint
+            self.farm_bot.executar_tap(map_x, map_y, "🎯 Clicar waypoint")
+            time.sleep(0.3)
+
+            # Fechar mapa (personagem continua andando automaticamente)
+            self.farm_bot.executar_tap(
+                self.farm_bot.config.map_button_x,
+                self.farm_bot.config.map_button_y,
+                "🗺️ Fechar mapa"
+            )
+
+            print("   ✅ Navegação iniciada! Personagem andando para centro...")
+            print("   👀 Main loop monitorará mobs (cancela se encontrar)")
+
+            time.sleep(2.0)  # Esperar um pouco para personagem começar a andar
+
+        except Exception as e:
+            print(f"   ❌ Erro ao navegar para centro: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _navegar_direto_para_centro(self, center_x, center_y):
+        """
+        Fallback: navegação direta para centro (sem pathfinding)
+        Usado quando A* não está disponível
+        """
+        print("   📍 Navegação direta para centro (sem A*)...")
+
+        # Obter posição atual
+        pos = self.gps.get_current_position(keep_map_open=True, verbose=False)
+        x_atual = int(pos['x'])
+        y_atual = int(pos['y'])
+
+        # Converter coordenadas do centro para tela usando função do navegador
+        if self.navegador:
+            map_x, map_y = self.navegador.mundo_to_tela(center_x, center_y, x_atual, y_atual)
+        else:
+            # Último fallback (não deveria acontecer)
+            map_x = 800
+            map_y = 450
+
+        print(f"   📍 Clicando centro: tela ({map_x}, {map_y}) = mundo ({center_x}, {center_y})")
+
+        # Clicar no centro (mapa já está aberto do GPS)
+        self.farm_bot.executar_tap(map_x, map_y, "🎯 Clicar centro")
+        time.sleep(0.3)
+
+        # Fechar mapa
+        self.farm_bot.executar_tap(
+            self.farm_bot.config.map_button_x,
+            self.farm_bot.config.map_button_y,
+            "🗺️ Fechar mapa"
+        )
+
+        print("   ✅ Navegação iniciada (direta)!")
+        time.sleep(2.0)
 
     def executar_farm_loop(self):
         """Loop principal de farm"""
@@ -323,9 +506,14 @@ class FarmIntegrado:
         last_mob_check = time.time()
         last_heartbeat = time.time()
         last_gps_check = time.time()  # Controle de recalibração GPS
+        last_mob_found_time = time.time()  # Última vez que encontrou mob
+        movimentos_sem_gps = 0  # Contador de movimentos sem atualizar GPS
         check_interval = 5.0  # Verificar área a cada 5 segundos
         heartbeat_interval = 30.0  # Log de status a cada 30 segundos
-        gps_check_interval = 60.0  # Verificar GPS a cada 60 segundos
+        gps_check_interval = 60.0  # Verificar GPS a cada 60 segundos (background)
+        gps_sem_mob_timeout = 5.0  # GPS se não achar mob por 5 segundos (REDUZIDO!)
+        max_movimentos_sem_gps = 8  # GPS a cada 8 movimentos de procura
+        borda_threshold = 0.7  # Considera "borda" se >70% do raio
         failed_captures = 0
         max_failed_captures = 10  # Parar após 10 falhas consecutivas
 
@@ -365,10 +553,36 @@ class FarmIntegrado:
                     time.sleep(0.5)  # Esperar antes de tentar novamente
                     continue
 
+                # GPS INTELIGENTE: Atualizar quando não encontrar mobs por muito tempo
+                tempo_sem_mob = current_time - last_mob_found_time
+                precisa_gps_inteligente = False
+
+                # Verificar se tem mob atualmente
+                if self.farm_bot.current_target is not None:
+                    last_mob_found_time = current_time  # Reset timer
+                    movimentos_sem_gps = 0  # Reset contador
+
+                # Condições para GPS inteligente:
+                # 1. Não encontrou mob por mais de 15 segundos
+                # 2. Já fez 8 movimentos de procura sem GPS
+                if tempo_sem_mob >= gps_sem_mob_timeout:
+                    print(f"\n⚠️ Sem mobs por {tempo_sem_mob:.0f}s - GPS inteligente!")
+                    precisa_gps_inteligente = True
+                elif movimentos_sem_gps >= max_movimentos_sem_gps:
+                    print(f"\n⚠️ {movimentos_sem_gps} movimentos sem GPS - atualizando!")
+                    precisa_gps_inteligente = True
+
                 # Procurar mobs ativamente se não houver alvo
                 if (current_time - last_mob_check) >= check_interval:
                     if self.farm_bot.current_target is None:
-                        self.procurar_mobs_ativamente()
+                        self.procurar_mobs_ativamente(atualizar_gps=precisa_gps_inteligente)
+                        movimentos_sem_gps += 1
+
+                        # Reset após GPS inteligente
+                        if precisa_gps_inteligente:
+                            movimentos_sem_gps = 0
+                            last_mob_found_time = current_time
+
                     last_mob_check = current_time
 
                 frame_count += 1

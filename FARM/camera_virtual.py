@@ -70,13 +70,18 @@ class CameraVirtual:
 
         # Carregar matriz walkable para validação de paredes
         self._carregar_matriz_walkable()
-        self.validacao_parede_ativa = True  # Pode ser desabilitada no modo interativo
 
-        # OFFSET DE CORREÇÃO (compensar erro do GPS)
-        # Descoberto via debug: GPS retorna Y com offset de ~25-29px
+        # ⚠️ VALIDAÇÃO TEMPORARIAMENTE DESABILITADA
+        # Motivo: Escala incorreta causa falsos positivos (mob=parede)
+        # Problema: Escala X=28.2, Y=24.0 (esperado 25.0 para ambos)
+        # TODO: Recalibrar escala corretamente antes de reativar
+        self.validacao_parede_ativa = False  # DESABILITADA até recalibração
+
+        # Offset removido (não é universal, varia por região)
         self.offset_correcao_x = 0
-        self.offset_correcao_y = -25  # Aplicar -25px no Y para compensar
+        self.offset_correcao_y = 0
 
+        print(f"   ⚠️ VALIDAÇÃO DE PAREDE: {'ATIVA' if self.validacao_parede_ativa else 'DESABILITADA (escala incorreta)'}")
         print(f"   ⚙️ Offset de correção: X={self.offset_correcao_x:+d}, Y={self.offset_correcao_y:+d}")
 
         # Imprimir informações de inicialização
