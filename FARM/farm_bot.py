@@ -106,7 +106,7 @@ class ArcherFarmBot:
         # Alvo atual
         self.current_target = None
         self.target_lock_time = 0  # Timestamp de quando travou no alvo
-        self.target_lock_duration = 2.0  # Manter alvo por 2 segundos antes de trocar
+        self.target_lock_duration = 30.0  # Manter alvo FIXO até morrer (30s)
         self.last_action = "IDLE"
         self.last_action_time = 0
         self.action_cooldown = 0.4  # segundos entre ações
@@ -359,9 +359,10 @@ class ArcherFarmBot:
                 # Procurar alvo atual nas detecções
                 for mob_info in mobs_com_info:
                     if mob_info['mob']['class'] == self.current_target['mob']['class']:
-                        # Verificar se é aproximadamente a mesma posição (dentro de 50px)
-                        if mob_info['dist_px'] - self.current_target['dist_px'] < 50:
-                            # Manter alvo atual
+                        # Verificar se é aproximadamente a mesma posição (dentro de 150px)
+                        # Tolerância maior para permitir movimento do mob
+                        if abs(mob_info['dist_px'] - self.current_target['dist_px']) < 150:
+                            # MANTER ALVO FIXO! Atualizar posição mas manter o mesmo mob
                             return mob_info
 
         # Trocar de alvo ou selecionar novo

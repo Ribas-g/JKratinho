@@ -302,48 +302,18 @@ class FarmIntegrado:
         mobs = [d for d in deteccoes if d['class'] in self.zones[self.selected_zone]['mobs']]
 
         if len(mobs) == 0:
-            # Nenhum mob visível - mover para explorar área
-            print("   ➡️ Nenhum mob visível, explorando área...")
+            # Nenhum mob visível
+            print("   ➡️ Nenhum mob visível")
 
-            # SE NA BORDA: Navegar para centro usando A*
-            if na_borda and pos_atual:
-                print("   🎯 NA BORDA - Navegando para CENTRO com A*...")
+            # GPS INTELIGENTE ATIVADO: Navegar para centro usando A*
+            if atualizar_gps and pos_atual:
+                print("   🎯 GPS INTELIGENTE - Navegando para CENTRO com A*...")
                 self.navegar_para_centro_inteligente(pos_atual)
                 return
 
-            # SENÃO: Movimento aleatório normal
-            # Movimento em coordenadas de TELA (não usar GPS)
-            # Calcular ponto aleatório a 2-3 tiles de distância (MENOS AGRESSIVO)
-
-            import random
-
-            # Distância aleatória: 2-3 tiles (era 3-4, agora menor)
-            tile_size = self.farm_bot.config.tile_size
-            distance = random.uniform(tile_size * 2, tile_size * 3)
-
-            # Ângulo aleatório
-            angle = random.uniform(0, 2 * math.pi)
-
-            # Calcular ponto relativo ao personagem (centro da tela)
-            center_x = self.farm_bot.config.center_x
-            center_y = self.farm_bot.config.center_y
-
-            offset_x = int(distance * math.cos(angle))
-            offset_y = int(distance * math.sin(angle))
-
-            move_x = center_x + offset_x
-            move_y = center_y + offset_y
-
-            # Limitar à tela (não clicar fora)
-            move_x = max(100, min(self.farm_bot.config.screen_width - 100, move_x))
-            move_y = max(100, min(self.farm_bot.config.screen_height - 100, move_y))
-
-            print(f"   📍 Explorando: ({move_x}, {move_y}) - {distance/tile_size:.1f} tiles")
-
-            # Executar movimento
-            self.farm_bot.executar_tap(move_x, move_y, "🔍 Explorar área")
-
-            time.sleep(1.2)  # Esperar movimento (era 1.5s, agora 1.2s)
+            # Se GPS inteligente não foi ativado ainda, só esperar
+            print("   ⏳ Aguardando próxima verificação...")
+            time.sleep(1.0)
 
     def navegar_para_centro_inteligente(self, pos_atual):
         """
@@ -508,10 +478,10 @@ class FarmIntegrado:
         last_gps_check = time.time()  # Controle de recalibração GPS
         last_mob_found_time = time.time()  # Última vez que encontrou mob
         movimentos_sem_gps = 0  # Contador de movimentos sem atualizar GPS
-        check_interval = 5.0  # Verificar área a cada 5 segundos
+        check_interval = 3.0  # Verificar área a cada 3 segundos
         heartbeat_interval = 30.0  # Log de status a cada 30 segundos
         gps_check_interval = 30.0  # Verificar se saiu do bioma a cada 30 segundos
-        gps_sem_mob_timeout = 5.0  # GPS se não achar mob por 5 segundos (REDUZIDO!)
+        gps_sem_mob_timeout = 3.0  # GPS INTELIGENTE se não achar mob por 3 segundos!
         max_movimentos_sem_gps = 8  # GPS a cada 8 movimentos de procura
         borda_threshold = 0.7  # Considera "borda" se >70% do raio
         failed_captures = 0
