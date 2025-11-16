@@ -414,21 +414,8 @@ class FarmIntegrado:
             time.sleep(0.4)  # Esperar mapa abrir
 
             # Converter coordenadas mundo → tela do mapa
-            # Usar função do GPS para isso
-            if hasattr(self.gps, 'converter_mundo_para_mapa'):
-                map_x, map_y = self.gps.converter_mundo_para_mapa(wp_x, wp_y, pos_atual['x'], pos_atual['y'])
-            else:
-                # Fallback: converter manualmente (simplificado)
-                # O mapa no jogo geralmente tem escala ~1px por tile
-                escala_mapa = 1.0
-                centro_mapa_x = 800  # Centro do minimapa (ajustar conforme jogo)
-                centro_mapa_y = 450
-
-                delta_x = (wp_x - pos_atual['x']) * escala_mapa
-                delta_y = (wp_y - pos_atual['y']) * escala_mapa
-
-                map_x = int(centro_mapa_x + delta_x)
-                map_y = int(centro_mapa_y + delta_y)
+            # USAR FUNÇÃO DO NAVEGADOR (já tem a lógica correta com escala 5.0!)
+            map_x, map_y = self.navegador.mundo_to_tela(wp_x, wp_y, x_atual, y_atual)
 
             print(f"   📍 Clicando waypoint no mapa: tela ({map_x}, {map_y}) = mundo ({wp_x}, {wp_y})")
 
@@ -460,19 +447,23 @@ class FarmIntegrado:
         """
         print("   📍 Navegação direta para centro (sem A*)...")
 
-        # Abrir mapa
-        self.farm_bot.executar_tap(
-            self.farm_bot.config.map_button_x,
-            self.farm_bot.config.map_button_y,
-            "📍 Abrir mapa"
-        )
-        time.sleep(0.4)
+        # Obter posição atual
+        pos = self.gps.get_current_position(keep_map_open=True, verbose=False)
+        x_atual = int(pos['x'])
+        y_atual = int(pos['y'])
 
-        # Clicar no centro (simplificado - assumir centro do mapa)
-        centro_mapa_x = 800
-        centro_mapa_y = 450
+        # Converter coordenadas do centro para tela usando função do navegador
+        if self.navegador:
+            map_x, map_y = self.navegador.mundo_to_tela(center_x, center_y, x_atual, y_atual)
+        else:
+            # Último fallback (não deveria acontecer)
+            map_x = 800
+            map_y = 450
 
-        self.farm_bot.executar_tap(centro_mapa_x, centro_mapa_y, "🎯 Clicar centro")
+        print(f"   📍 Clicando centro: tela ({map_x}, {map_y}) = mundo ({center_x}, {center_y})")
+
+        # Clicar no centro (mapa já está aberto do GPS)
+        self.farm_bot.executar_tap(map_x, map_y, "🎯 Clicar centro")
         time.sleep(0.3)
 
         # Fechar mapa
