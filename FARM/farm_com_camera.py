@@ -28,6 +28,14 @@ from ultralytics import YOLO
 from gps_ncc_realtime import GPSRealtimeNCC
 from FARM.camera_virtual import CameraVirtual
 
+# Importar adbnativeblitz (captura rápida)
+try:
+    from adbnativeblitz import AdbFastScreenshots
+    ADBNATIVEBLITZ_DISPONIVEL = True
+except ImportError:
+    ADBNATIVEBLITZ_DISPONIVEL = False
+    print("⚠️ adbnativeblitz não instalado. Usando screencap padrão.")
+
 
 class VisualizadorFarm:
     """
@@ -245,10 +253,35 @@ class FarmComCamera:
         self.deteccoes_atuais = []
         self.last_action = "IDLE"
         self.last_action_time = 0
-        self.action_cooldown = 0.4  # 400ms entre ações
+        self.action_cooldown = 1.0  # 1000ms entre ações (aumentado para debug)
+
+        # Debug de paredes (screenshots quando detectar parede)
+        self.pasta_debug_paredes = Path(__file__).parent / "debug_paredes"
+        self.pasta_debug_paredes.mkdir(exist_ok=True)
+        self.contador_debug_parede = 0
+        self.ultimo_frame_capturado = None  # Guardar último frame para debug
 
         # Janela de visualização do jogo (frame)
         self.mostrar_deteccoes = True
+
+        # Medidor de FPS
+        self.fps_counter = 0
+        self.fps_start_time = time.time()
+        self.fps_atual = 0
+
+        # Sistema de captura (adbnativeblitz vs screencap)
+        self.usar_adbnativeblitz = ADBNATIVEBLITZ_DISPONIVEL  # Usar se disponível
+        self.adb_stream = None  # Stream do adbnativeblitz
+        self.metodo_captura = "DESCONHECIDO"
+
+        print("🎥 Sistema de captura:")
+        if self.usar_adbnativeblitz:
+            print("   ✅ ADBNATIVEBLITZ ativado (30+ FPS esperado)")
+            self.metodo_captura = "ADBNATIVEBLITZ"
+        else:
+            print("   ⚠️ SCREENCAP RAW (10-15 FPS esperado)")
+            self.metodo_captura = "SCREENCAP_RAW"
+        print()
 
     def inicializar(self):
         """Inicializa GPS"""
@@ -259,6 +292,7 @@ class FarmComCamera:
             return False
 
         print("✅ Sistema pronto!")
+        print()
         return True
 
     def tela_para_mundo(self, x_tela, y_tela):
@@ -266,47 +300,163 @@ class FarmComCamera:
         return self.camera.tela_para_mundo(x_tela, y_tela)
 
     def validar_clique(self, x_tela, y_tela):
-        """Valida se clique é seguro (não é parede)"""
+        """
+        Valida se clique é seguro (não é parede)
+
+        Se detectar parede, tira screenshot de debug
+        """
         x_mundo, y_mundo = self.tela_para_mundo(x_tela, y_tela)
 
         if x_mundo is None:
             return False
 
-        return self.camera.validar_posicao(x_mundo, y_mundo)
+        eh_valido = self.camera.validar_posicao(x_mundo, y_mundo)
 
-    def executar_clique_seguro(self, x_tela, y_tela, description=""):
-        """Executa clique COM validação de parede"""
-        # Zona morta
-        dx = x_tela - self.center_x
-        dy = y_tela - self.center_y
-        dist = math.sqrt(dx**2 + dy**2)
+        # Se detectou PAREDE, tirar screenshot de debug
+        if not eh_valido and self.ultimo_frame_capturado is not None:
+            self.salvar_screenshot_parede(x_tela, y_tela, x_mundo, y_mundo)
 
-        DEAD_ZONE = 80
-        if dist < DEAD_ZONE:
-            if dist > 0:
-                scale = DEAD_ZONE / dist
-                x_tela = self.center_x + int(dx * scale)
-                y_tela = self.center_y + int(dy * scale)
-            else:
-                return False
+        return eh_valido
+
+    def salvar_screenshot_parede(self, x_tela, y_tela, x_mundo, y_mundo):
+        """Salva screenshot quando detectar parede para debug"""
+        try:
+            self.contador_debug_parede += 1
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+
+            # Criar cópia do frame com marcação
+            frame_debug = self.ultimo_frame_capturado.copy()
+
+            # Desenhar cruz VERMELHA onde tentou clicar
+            cv2.drawMarker(frame_debug, (x_tela, y_tela), (0, 0, 255),
+                          cv2.MARKER_CROSS, 50, 3)
+
+            # Texto informativo
+            texto = f"PAREDE! Tela:({x_tela},{y_tela}) Mundo:({x_mundo:.0f},{y_mundo:.0f})"
+            cv2.putText(frame_debug, texto, (10, 30),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+
+            # Salvar
+            filename = f"parede_{self.contador_debug_parede:03d}_{timestamp}.png"
+            filepath = self.pasta_debug_paredes / filename
+            cv2.imwrite(str(filepath), frame_debug)
+
+            print(f"   📸 Screenshot de parede salvo: {filename}")
+
+        except Exception as e:
+            print(f"   ⚠️ Erro ao salvar screenshot: {e}")
+
+    def executar_clique_seguro(self, x_tela, y_tela, description="", ajustar_zona_morta=True):
+        """
+        Executa clique COM validação de parede
+
+        Args:
+            x_tela, y_tela: Coordenadas do clique
+            description: Descrição da ação
+            ajustar_zona_morta: Se True, ajusta cliques muito próximos do centro
+
+        Returns:
+            bool: True se clique foi executado
+        """
+        x_original = x_tela
+        y_original = y_tela
+
+        # Zona morta (reduzida para evitar kiting excessivo)
+        if ajustar_zona_morta:
+            dx = x_tela - self.center_x
+            dy = y_tela - self.center_y
+            dist = math.sqrt(dx**2 + dy**2)
+
+            # ZONA MORTA REDUZIDA: 30px (era 80px)
+            # Isso permite atacar mais próximo sem tanto kiting
+            DEAD_ZONE = 30
+            if dist < DEAD_ZONE:
+                if dist > 0:
+                    scale = DEAD_ZONE / dist
+                    x_tela = self.center_x + int(dx * scale)
+                    y_tela = self.center_y + int(dy * scale)
+                else:
+                    return False
 
         # Validar parede
         if not self.validar_clique(x_tela, y_tela):
-            print(f"   🚫 PAREDE! ({x_tela}, {y_tela})")
+            print(f"   🚫 PAREDE! Original: ({x_original}, {y_original}) → Ajustado: ({x_tela}, {y_tela})")
             return False
 
         # Executar
         try:
+            # LOG DETALHADO ANTES DE CLICAR
+            print(f"\n   🖱️ CLICANDO:")
+            print(f"      Original: ({x_original}, {y_original})")
+            print(f"      Final: ({x_tela}, {y_tela})")
+            print(f"      Descrição: {description}")
+
             self.device.shell(f"input tap {x_tela} {y_tela}")
+
             if description:
-                print(f"   ✅ {description} ({x_tela}, {y_tela})")
+                clique_foi_ajustado = (x_tela != x_original or y_tela != y_original)
+                ajuste_info = ""
+                if clique_foi_ajustado:
+                    delta_x = x_tela - x_original
+                    delta_y = y_tela - y_original
+                    ajuste_info = f" [⚠️ AJUSTADO: Δx={delta_x:+d}, Δy={delta_y:+d}]"
+                print(f"   ✅ {description}{ajuste_info}")
+
+            print(f"      ⏱️ Aguardando {self.action_cooldown}s...\n")
             return True
         except Exception as e:
             print(f"   ❌ Erro: {e}")
             return False
 
     def capturar_frame(self):
-        """Captura screenshot"""
+        """
+        Captura screenshot usando SCREENCAP RAW
+
+        Usado apenas quando adbnativeblitz não está disponível
+        ou como fallback.
+        """
+        # SCREENCAP RAW
+        try:
+            # screencap sem compressão PNG
+            screenshot_bytes = self.device.shell("screencap", encoding=None)
+
+            if not screenshot_bytes or len(screenshot_bytes) < 1000:
+                return None
+
+            # Decodificar formato raw do screencap
+            # Formato: header (12 bytes) + pixels RGBA
+            # Header: width (4 bytes), height (4 bytes), format (4 bytes)
+
+            # Pular header (12 bytes)
+            width = int.from_bytes(screenshot_bytes[0:4], byteorder='little')
+            height = int.from_bytes(screenshot_bytes[4:8], byteorder='little')
+
+            # Dados dos pixels começam no byte 12
+            pixels = screenshot_bytes[12:]
+
+            # Converter para numpy array (RGBA)
+            img = np.frombuffer(pixels, dtype=np.uint8)
+
+            # Verificar tamanho esperado
+            expected_size = width * height * 4  # RGBA = 4 bytes por pixel
+            if len(img) < expected_size:
+                # Fallback para método antigo
+                return self.capturar_frame_fallback()
+
+            # Reshape para imagem (height, width, 4)
+            img = img.reshape((height, width, 4))
+
+            # Converter RGBA -> BGR (OpenCV usa BGR)
+            img_bgr = cv2.cvtColor(img, cv2.COLOR_RGBA2BGR)
+
+            return img_bgr
+
+        except Exception as e:
+            # Se método otimizado falhar, usar fallback
+            return self.capturar_frame_fallback()
+
+    def capturar_frame_fallback(self):
+        """Captura screenshot MÉTODO ANTIGO (fallback)"""
         try:
             screenshot_bytes = self.device.shell("screencap -p", encoding=None)
             nparr = np.frombuffer(screenshot_bytes, np.uint8)
@@ -341,6 +491,28 @@ class FarmComCamera:
             return deteccoes
         except:
             return []
+
+    def calcular_distancia_tiles(self, bbox):
+        """
+        Calcula distância em tiles do centro da tela até o objeto
+
+        Args:
+            bbox: [x1, y1, x2, y2]
+
+        Returns:
+            float: distância em tiles
+        """
+        x1, y1, x2, y2 = bbox
+        center_x = (x1 + x2) / 2
+        center_y = (y1 + y2) / 2
+
+        dx = center_x - self.center_x
+        dy = center_y - self.center_y
+
+        dist_px = math.sqrt(dx**2 + dy**2)
+        dist_tiles = dist_px / self.tile_size
+
+        return dist_tiles
 
     def desenhar_deteccoes(self, frame):
         """
@@ -388,9 +560,10 @@ class FarmComCamera:
             dist_tiles = self.calcular_distancia_tiles(det['bbox'])
             cv2.putText(img, f"{dist_tiles:.1f}t", (cx, cy), cv2.FONT_HERSHEY_SIMPLEX, 0.5, cor, 2)
 
-        # HUD
-        cv2.putText(img, f"Deteccoes: {len(self.deteccoes_atuais)}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-        cv2.putText(img, f"Ultima acao: {self.last_action}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        # HUD simples (apenas YOLO + FPS)
+        cv2.putText(img, f"FPS: {self.fps_atual:.1f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        cv2.putText(img, f"Deteccoes: {len(self.deteccoes_atuais)}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        cv2.putText(img, f"Ultima acao: {self.last_action}", (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
         return img
 
@@ -436,9 +609,9 @@ class FarmComCamera:
 
     def processar_farm(self):
         """
-        Lógica principal de farm:
+        Lógica principal de farm (MELHORADA - menos kiting):
         1. Coletar coins primeiro (prioridade)
-        2. Atacar mobs mais próximos
+        2. Atacar mobs mais próximos (SEM kiting excessivo)
         3. Validar cada clique (parede)
         4. Respeitar cooldown
         """
@@ -457,11 +630,12 @@ class FarmComCamera:
             coin_mais_proximo = min(coins, key=lambda c: self.calcular_distancia_tiles(c['bbox']))
             dist_tiles = self.calcular_distancia_tiles(coin_mais_proximo['bbox'])
 
-            # Se coin está perto (< 4 tiles), coletar
-            if dist_tiles < 4.0:
+            # Se coin está perto (< 5 tiles), coletar
+            if dist_tiles < 5.0:
                 x, y = coin_mais_proximo['center']
 
-                if self.executar_clique_seguro(x, y, f"💰 Coin ({dist_tiles:.1f}t)"):
+                # Coins não precisam de zona morta (queremos clicar direto)
+                if self.executar_clique_seguro(x, y, f"💰 Coin ({dist_tiles:.1f}t)", ajustar_zona_morta=False):
                     self.last_action_time = tempo_atual
                     self.last_action = "COIN"
                 return  # Não atacar se coletou coin
@@ -472,20 +646,164 @@ class FarmComCamera:
             mob_mais_proximo = min(mobs, key=lambda m: self.calcular_distancia_tiles(m['bbox']))
             dist_tiles = self.calcular_distancia_tiles(mob_mais_proximo['bbox'])
 
-            # Se mob está no alcance (< 5 tiles), atacar
-            if dist_tiles < 5.0:
+            # ALCANCE AUMENTADO: 1-6 tiles (era 0-5)
+            # Isso permite atacar de longe sem precisar se aproximar tanto
+            if 1.0 < dist_tiles < 6.5:
                 x, y = mob_mais_proximo['center']
                 mob_class = mob_mais_proximo['class']
 
-                if self.executar_clique_seguro(x, y, f"⚔️ {mob_class} ({dist_tiles:.1f}t)"):
+                # Se mob está MUITO perto (< 1 tile), NÃO atacar direto no mob
+                # Isso evita clicar em cima e bugar
+                if dist_tiles < 1.0:
+                    # Não fazer nada se mob está muito perto
+                    # Deixar ele atacar por auto-attack
+                    self.last_action = "AUTO_ATTACK"
+                    return
+
+                # Atacar SEM ajuste de zona morta se dist > 2 tiles
+                # Isso reduz kiting desnecessário
+                ajustar = dist_tiles < 2.0
+
+                if self.executar_clique_seguro(x, y, f"⚔️ {mob_class} ({dist_tiles:.1f}t)", ajustar_zona_morta=ajustar):
                     self.last_action_time = tempo_atual
                     self.last_action = f"ATTACK_{mob_class}"
                 return
 
         # Nenhuma ação executada
         if (tempo_atual - self.last_action_time) > 2.0:  # Log a cada 2s
-            # print("   💤 Aguardando targets...")
+            self.last_action = "IDLE"
             self.last_action_time = tempo_atual
+
+    def _loop_principal_screencap(self):
+        """Loop principal usando screencap raw"""
+        while self.running:
+            try:
+                # Capturar frame
+                frame = self.capturar_frame()
+                if frame is None:
+                    time.sleep(0.1)
+                    continue
+
+                # Salvar frame para debug de paredes
+                self.ultimo_frame_capturado = frame.copy()
+
+                # Calcular FPS
+                self.fps_counter += 1
+                tempo_decorrido = time.time() - self.fps_start_time
+                if tempo_decorrido >= 1.0:  # Atualizar FPS a cada 1 segundo
+                    self.fps_atual = self.fps_counter / tempo_decorrido
+                    self.fps_counter = 0
+                    self.fps_start_time = time.time()
+
+                # Detectar objetos
+                self.deteccoes_atuais = self.detectar_objetos(frame)
+
+                # 🎯 LÓGICA DE FARM
+                self.processar_farm()
+
+                # Atualizar visualizadores (mapa + tela do jogo)
+                self.atualizar_visualizador(frame)
+
+                # Aguardar (AUMENTADO para permitir visualização - DEBUG MODE)
+                time.sleep(0.2)  # 200ms = 5 FPS para debug visual
+
+                # Verificar se visualizador fechou
+                if self.visualizador and not self.visualizador.rodando:
+                    self.running = False
+
+            except KeyboardInterrupt:
+                print("\n\n⚠️ Interrompido")
+                self.running = False
+                break
+            except Exception as e:
+                print(f"❌ Erro: {e}")
+                time.sleep(1)
+
+    def _loop_principal_adbnativeblitz(self):
+        """Loop principal usando adbnativeblitz (com context manager)"""
+        import shutil
+        adb_path = shutil.which("adb")
+        if adb_path is None:
+            # Tentar caminho padrão Windows
+            import os
+            possible_paths = [
+                r"C:\Android\android-sdk\platform-tools\adb.exe",
+                r"C:\Program Files (x86)\Android\android-sdk\platform-tools\adb.exe",
+                r"C:\Users\{}\AppData\Local\Android\Sdk\platform-tools\adb.exe".format(os.getenv('USERNAME', 'user')),
+                "adb"
+            ]
+            for path in possible_paths:
+                if os.path.exists(path):
+                    adb_path = path
+                    break
+            if adb_path is None:
+                adb_path = "adb"
+
+        print(f"   🔧 ADB path: {adb_path}")
+        print(f"   📱 Device: {self.device.serial}")
+        print("   🎬 Iniciando stream H.264...")
+
+        try:
+            # USAR WITH STATEMENT CORRETAMENTE
+            with AdbFastScreenshots(
+                adb_path=adb_path,
+                device_serial=self.device.serial,
+                time_interval=179,
+                width=1600,
+                height=900,
+                bitrate="20M",
+                use_busybox=False,
+                connect_to_device=True,
+                screenshotbuffer=10,
+                go_idle=0.001
+            ) as adb_stream:
+                print("   ✅ Stream ativo!")
+
+                # Loop dentro do context manager
+                for frame in adb_stream:
+                    if frame is None:
+                        continue
+
+                    if not self.running:
+                        break
+
+                    # Salvar frame para debug de paredes
+                    self.ultimo_frame_capturado = frame.copy()
+
+                    # Calcular FPS
+                    self.fps_counter += 1
+                    tempo_decorrido = time.time() - self.fps_start_time
+                    if tempo_decorrido >= 1.0:
+                        self.fps_atual = self.fps_counter / tempo_decorrido
+                        self.fps_counter = 0
+                        self.fps_start_time = time.time()
+
+                    # Detectar objetos
+                    self.deteccoes_atuais = self.detectar_objetos(frame)
+
+                    # 🎯 LÓGICA DE FARM
+                    self.processar_farm()
+
+                    # Atualizar visualizadores
+                    self.atualizar_visualizador(frame)
+
+                    # Aguardar (AUMENTADO para permitir visualização - DEBUG MODE)
+                    time.sleep(0.2)  # 200ms = 5 FPS para debug visual
+
+                    # Verificar se visualizador fechou
+                    if self.visualizador and not self.visualizador.rodando:
+                        self.running = False
+                        break
+
+        except KeyboardInterrupt:
+            print("\n\n⚠️ Interrompido")
+            self.running = False
+        except Exception as e:
+            print(f"\n❌ Erro no stream adbnativeblitz: {e}")
+            print(f"   Tipo: {type(e).__name__}")
+            import traceback
+            traceback.print_exc()
+            raise
 
     def run(self):
         """Loop principal"""
@@ -503,37 +821,21 @@ class FarmComCamera:
 
         self.running = True
 
-        while self.running:
+        # Escolher loop baseado no método de captura
+        if self.usar_adbnativeblitz and ADBNATIVEBLITZ_DISPONIVEL:
+            print("🚀 Usando ADBNATIVEBLITZ (H.264 stream)...")
             try:
-                # Capturar frame
-                frame = self.capturar_frame()
-                if frame is None:
-                    time.sleep(0.1)
-                    continue
-
-                # Detectar objetos
-                self.deteccoes_atuais = self.detectar_objetos(frame)
-
-                # 🎯 LÓGICA DE FARM
-                self.processar_farm()
-
-                # Atualizar visualizadores (mapa + tela do jogo)
-                self.atualizar_visualizador(frame)
-
-                # Aguardar
-                time.sleep(0.15)
-
-                # Verificar se visualizador fechou
-                if self.visualizador and not self.visualizador.rodando:
-                    self.running = False
-
-            except KeyboardInterrupt:
-                print("\n\n⚠️ Interrompido")
-                self.running = False
-                break
+                self._loop_principal_adbnativeblitz()
             except Exception as e:
-                print(f"❌ Erro: {e}")
-                time.sleep(1)
+                print(f"\n⚠️ adbnativeblitz falhou: {e}")
+                print("   ↪️ Voltando para screencap raw...")
+                self.usar_adbnativeblitz = False
+                self.metodo_captura = "SCREENCAP_RAW"
+                self.running = True
+                self._loop_principal_screencap()
+        else:
+            print("🔧 Usando SCREENCAP RAW...")
+            self._loop_principal_screencap()
 
         print("\n✅ Farm finalizado!")
 
