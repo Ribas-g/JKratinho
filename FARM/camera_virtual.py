@@ -136,15 +136,27 @@ class CameraVirtual:
     def _carregar_matriz_walkable(self):
         """
         Carrega matriz walkable para validação de paredes
+
+        FORMATO DA MATRIZ V2.0:
+        - Shape: (largura, altura) = (X, Y)
+        - Acesso: matriz[x, y]
+        - 1 = andável (chão)
+        - 0 = parede/obstáculo
         """
         try:
-            dados = np.load('mapa_mundo_processado.npz')
+            dados = np.load('FARM/mapa_mundo_processado.npz')
             self.matriz_walkable = dados['walkable']
-            self.mundo_largura = dados['dimensoes'][0]
-            self.mundo_altura = dados['dimensoes'][1]
+            self.mundo_largura = dados['dimensoes'][0]  # X (largura)
+            self.mundo_altura = dados['dimensoes'][1]   # Y (altura)
+
+            formato = dados.get('formato', 'desconhecido')
+            versao = dados.get('versao', 'desconhecido')
+
             print(f"   ✅ Matriz walkable carregada: {self.mundo_largura}x{self.mundo_altura}")
+            print(f"      Versão: {versao}, Formato: {formato}")
+            print(f"      Shape real: {self.matriz_walkable.shape}")
         except FileNotFoundError:
-            print("   ⚠️ mapa_mundo_processado.npz não encontrado - validação de paredes desabilitada")
+            print("   ⚠️ FARM/mapa_mundo_processado.npz não encontrado - validação de paredes desabilitada")
             self.matriz_walkable = None
             self.mundo_largura = None
             self.mundo_altura = None

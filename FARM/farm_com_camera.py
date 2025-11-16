@@ -329,9 +329,18 @@ class FarmComCamera:
 
         # Se detectou PAREDE, REFAZER com debug ativado + screenshot
         if not eh_valido:
+            # Calcular distância do player para entender contexto
+            dx_mundo = x_mundo - self.camera.pos_x
+            dy_mundo = y_mundo - self.camera.pos_y
+            dist_mundo = np.sqrt(dx_mundo**2 + dy_mundo**2)
+            dist_tiles = dist_mundo / 4.0  # 1 tile = 4px no mundo
+
             print(f"\n   ⚠️ PAREDE DETECTADA!")
             print(f"      Tela: ({x_tela}, {y_tela})")
-            print(f"      Mundo: ({x_mundo}, {y_mundo})")
+            print(f"      Mundo: ({x_mundo:.1f}, {y_mundo:.1f})")
+            print(f"      Player: ({self.camera.pos_x:.1f}, {self.camera.pos_y:.1f})")
+            print(f"      Distância: {dist_mundo:.1f}px = {dist_tiles:.1f} tiles")
+            print(f"      Delta: dx={dx_mundo:.1f}, dy={dy_mundo:.1f}")
 
             # Refazer validação COM debug para mostrar detalhes
             self.camera.validar_posicao(x_mundo, y_mundo, debug=True)
