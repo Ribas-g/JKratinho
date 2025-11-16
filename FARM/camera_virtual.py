@@ -72,6 +72,13 @@ class CameraVirtual:
         self._carregar_matriz_walkable()
         self.validacao_parede_ativa = True  # Pode ser desabilitada no modo interativo
 
+        # OFFSET DE CORREÇÃO (compensar erro do GPS)
+        # Descoberto via debug: GPS retorna Y com offset de ~25-29px
+        self.offset_correcao_x = 0
+        self.offset_correcao_y = -25  # Aplicar -25px no Y para compensar
+
+        print(f"   ⚙️ Offset de correção: X={self.offset_correcao_x:+d}, Y={self.offset_correcao_y:+d}")
+
         # Imprimir informações de inicialização
         print("🎥 Câmera Virtual inicializada!")
         print(f"   Tela do jogo: {self.tela_largura}x{self.tela_altura}px (1 tile = {self.pixels_por_tile_jogo}px)")
@@ -191,14 +198,20 @@ class CameraVirtual:
         if self.matriz_walkable is None or not self.validacao_parede_ativa:
             return True  # Sem validação, aceitar tudo
 
+        # APLICAR OFFSET DE CORREÇÃO (compensar erro do GPS)
+        x_mundo_corrigido = x_mundo + self.offset_correcao_x
+        y_mundo_corrigido = y_mundo + self.offset_correcao_y
+
         # Arredondar para centro do pixel
-        x = int(round(x_mundo))
-        y = int(round(y_mundo))
+        x = int(round(x_mundo_corrigido))
+        y = int(round(y_mundo_corrigido))
 
         if debug:
             print(f"\n   🔍 DEBUG VALIDAÇÃO:")
             print(f"      Player: ({self.pos_x:.1f}, {self.pos_y:.1f})")
-            print(f"      Target mundo: ({x_mundo:.1f}, {y_mundo:.1f})")
+            print(f"      Target mundo (original): ({x_mundo:.1f}, {y_mundo:.1f})")
+            print(f"      Target mundo (corrigido): ({x_mundo_corrigido:.1f}, {y_mundo_corrigido:.1f})")
+            print(f"      Offset aplicado: ({self.offset_correcao_x:+d}, {self.offset_correcao_y:+d})")
             print(f"      Target int: ({x}, {y})")
             print(f"      Limites matriz: [0-{self.mundo_largura}] x [0-{self.mundo_altura}]")
 
