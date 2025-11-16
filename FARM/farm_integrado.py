@@ -510,7 +510,7 @@ class FarmIntegrado:
         movimentos_sem_gps = 0  # Contador de movimentos sem atualizar GPS
         check_interval = 5.0  # Verificar área a cada 5 segundos
         heartbeat_interval = 30.0  # Log de status a cada 30 segundos
-        gps_check_interval = 60.0  # Verificar GPS a cada 60 segundos (background)
+        gps_check_interval = 30.0  # Verificar se saiu do bioma a cada 30 segundos
         gps_sem_mob_timeout = 5.0  # GPS se não achar mob por 5 segundos (REDUZIDO!)
         max_movimentos_sem_gps = 8  # GPS a cada 8 movimentos de procura
         borda_threshold = 0.7  # Considera "borda" se >70% do raio
@@ -525,19 +525,41 @@ class FarmIntegrado:
                     print(f"\n💚 [Heartbeat] Frame {frame_count}, Bot ativo: {self.farm_bot.bot_active}")
                     last_heartbeat = current_time
 
-                # GPS RECALIBRAÇÃO: Verificar se precisa atualizar posição virtual
-                if self.farm_bot.usar_mapa_virtual and (current_time - last_gps_check) >= gps_check_interval:
-                    if self.farm_bot.precisa_gps_recalibracao():
-                        print("\n🔄 GPS recalibração necessária...")
-                        try:
-                            pos = self.gps.get_current_position(keep_map_open=False, verbose=False)
-                            if pos and 'x' in pos and 'y' in pos:
+                # VERIFICAÇÃO PERIÓDICA: Checar se saiu do bioma
+                if (current_time - last_gps_check) >= gps_check_interval:
+                    print("\n📡 Verificação periódica de posição...")
+                    try:
+                        pos = self.gps.get_current_position(keep_map_open=False, verbose=False)
+                        if pos and 'x' in pos and 'y' in pos:
+                            # Dados da zona
+                            zone_data = self.zones[self.selected_zone]
+                            center_x = zone_data['farm_area']['center']['x']
+                            center_y = zone_data['farm_area']['center']['y']
+                            radius = zone_data['farm_area']['radius']
+
+                            dist = math.sqrt((pos['x'] - center_x)**2 + (pos['y'] - center_y)**2)
+
+                            # Atualizar mapa virtual se estiver usando
+                            if self.farm_bot.usar_mapa_virtual:
                                 self.farm_bot.atualizar_posicao_gps(pos['x'], pos['y'])
-                                print(f"   ✅ Posição atualizada: ({pos['x']}, {pos['y']})")
+
+                            # VERIFICAR SE SAIU DO BIOMA
+                            if dist > radius:
+                                print(f"   ⚠️ SAIU DO BIOMA! Distância: {dist:.0f}/{radius}px")
+                                print(f"   🎯 Navegando de volta ao CENTRO com A*...")
+
+                                # Usar mesma função de navegação A* para centro
+                                self.navegar_para_centro_inteligente(pos)
+
+                                # Reset timers após voltar
+                                last_mob_found_time = current_time
+                                movimentos_sem_gps = 0
                             else:
-                                print("   ⚠️ GPS recalibração falhou")
-                        except Exception as e:
-                            print(f"   ⚠️ Erro na recalibração GPS: {e}")
+                                print(f"   ✅ Dentro do bioma ({dist:.0f}/{radius}px)")
+                        else:
+                            print("   ⚠️ GPS check falhou")
+                    except Exception as e:
+                        print(f"   ⚠️ Erro no GPS check: {e}")
                     last_gps_check = current_time
 
                 # Processar frame de farm
