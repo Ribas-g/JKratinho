@@ -342,6 +342,28 @@ class FarmComCamera:
         except:
             return []
 
+    def calcular_distancia_tiles(self, bbox):
+        """
+        Calcula distância em tiles do centro da tela até o objeto
+
+        Args:
+            bbox: [x1, y1, x2, y2]
+
+        Returns:
+            float: distância em tiles
+        """
+        x1, y1, x2, y2 = bbox
+        center_x = (x1 + x2) / 2
+        center_y = (y1 + y2) / 2
+
+        dx = center_x - self.center_x
+        dy = center_y - self.center_y
+
+        dist_px = math.sqrt(dx**2 + dy**2)
+        dist_tiles = dist_px / self.tile_size
+
+        return dist_tiles
+
     def desenhar_deteccoes(self, frame):
         """
         Desenha detecções YOLO no frame do jogo
