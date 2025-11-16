@@ -190,34 +190,28 @@ class CameraVirtual:
 
         # Verificar área 3x3 ao redor do ponto (compensar drift/alinhamento)
         # Se QUALQUER pixel na área for andável, considerar OK
+        #
+        # IMPORTANTE: Matriz está em formato [X, Y] não [Y, X]!
+        # Descoberto via debug - coluna direita tinha ✓, esquerda tinha ✗
         if debug:
             print(f"      Verificando área 3x3:")
             print(f"      Shape da matriz: {self.matriz_walkable.shape}")
-            print(f"      Formato de acesso: matriz[?, ?]")
+            print(f"      ✅ USANDO matriz[x, y] (inversão corrigida)")
 
         andavel_encontrado = False
         for dy in [-1, 0, 1]:
             for dx in [-1, 0, 1]:
-                # TENTAR AMBAS AS ORDENS para descobrir qual é a correta
+                # CORREÇÃO APLICADA: matriz[x, y] ao invés de matriz[y, x]
                 try:
-                    # Opção 1: matriz[y, x] (linha, coluna) - PADRÃO NUMPY
-                    valor_yx = self.matriz_walkable[y + dy, x + dx]
+                    valor = self.matriz_walkable[x + dx, y + dy]
                 except:
-                    valor_yx = -1
-
-                try:
-                    # Opção 2: matriz[x, y] (se foi criada assim)
-                    valor_xy = self.matriz_walkable[x + dx, y + dy]
-                except:
-                    valor_xy = -1
+                    valor = -1
 
                 if debug:
-                    simbolo_yx = "✓" if valor_yx == 1 else "✗"
-                    simbolo_xy = "✓" if valor_xy == 1 else "✗"
-                    print(f"         matriz[{y+dy:4d}, {x+dx:4d}] = {valor_yx} {simbolo_yx}  |  matriz[{x+dx:4d}, {y+dy:4d}] = {valor_xy} {simbolo_xy}")
+                    simbolo = "✓" if valor == 1 else "✗"
+                    print(f"         matriz[{x+dx:4d}, {y+dy:4d}] = {valor} {simbolo}")
 
-                # Usar opção 1 (matriz[y, x]) por enquanto
-                if valor_yx == 1:
+                if valor == 1:
                     andavel_encontrado = True
 
         if debug:
@@ -225,8 +219,6 @@ class CameraVirtual:
                 print(f"      ✅ ANDÁVEL (pelo menos 1 pixel livre)")
             else:
                 print(f"      🚫 PAREDE (toda área bloqueada)")
-            print(f"      💡 DICA: Compare as duas colunas acima. Se uma tem ✓ e outra não,")
-            print(f"               a matriz está com coordenadas invertidas!")
 
         return andavel_encontrado
 

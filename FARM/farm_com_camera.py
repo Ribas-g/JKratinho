@@ -98,6 +98,20 @@ class VisualizadorFarm:
         if not self.rodando:
             return
 
+        # Garantir que janela seja WINDOW_NORMAL (redimensionável)
+        # Verificar propriedade da janela e recriar se necessário
+        try:
+            # Se janela não existe ou não é NORMAL, recriar
+            propriedade = cv2.getWindowProperty(self.janela_nome, cv2.WND_PROP_AUTOSIZE)
+            if propriedade != 0:  # 0 = WINDOW_NORMAL, 1 = WINDOW_AUTOSIZE
+                cv2.destroyWindow(self.janela_nome)
+                cv2.namedWindow(self.janela_nome, cv2.WINDOW_NORMAL)
+                cv2.resizeWindow(self.janela_nome, 1400, 900)
+        except:
+            # Janela não existe, criar
+            cv2.namedWindow(self.janela_nome, cv2.WINDOW_NORMAL)
+            cv2.resizeWindow(self.janela_nome, 1400, 900)
+
         img = self.mapa_original.copy()
 
         # 1. Desenhar FOV (retângulo amarelo)
@@ -603,14 +617,19 @@ class FarmComCamera:
         if frame is not None and self.mostrar_deteccoes:
             img_deteccoes = self.desenhar_deteccoes(frame)
 
-            # Criar janela REDIMENSIONÁVEL se não existir
+            # Garantir janela REDIMENSIONÁVEL (WINDOW_NORMAL)
             janela_nome = "🎮 Farm Bot - Deteccoes YOLO"
             try:
-                cv2.getWindowProperty(janela_nome, cv2.WND_PROP_VISIBLE)
+                # Verificar se janela existe e é WINDOW_NORMAL
+                propriedade = cv2.getWindowProperty(janela_nome, cv2.WND_PROP_AUTOSIZE)
+                if propriedade != 0:  # Não é WINDOW_NORMAL, recriar
+                    cv2.destroyWindow(janela_nome)
+                    cv2.namedWindow(janela_nome, cv2.WINDOW_NORMAL)
+                    cv2.resizeWindow(janela_nome, 1280, 720)
             except:
-                # Janela não existe, criar como WINDOW_NORMAL (redimensionável)
+                # Janela não existe, criar como WINDOW_NORMAL
                 cv2.namedWindow(janela_nome, cv2.WINDOW_NORMAL)
-                cv2.resizeWindow(janela_nome, 1280, 720)  # Tamanho inicial
+                cv2.resizeWindow(janela_nome, 1280, 720)
 
             cv2.imshow(janela_nome, img_deteccoes)
             key = cv2.waitKey(1) & 0xFF
