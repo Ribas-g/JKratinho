@@ -255,6 +255,12 @@ class FarmComCamera:
         self.last_action_time = 0
         self.action_cooldown = 0.4  # 400ms entre ações
 
+        # Rastreamento de cliques (para visualização)
+        self.ultimo_clique_x = None
+        self.ultimo_clique_y = None
+        self.ultimo_clique_tempo = 0
+        self.tempo_exibir_clique = 1.0  # Mostrar clique por 1 segundo
+
         # Janela de visualização do jogo (frame)
         self.mostrar_deteccoes = True
 
@@ -302,32 +308,57 @@ class FarmComCamera:
 
         return self.camera.validar_posicao(x_mundo, y_mundo)
 
-    def executar_clique_seguro(self, x_tela, y_tela, description=""):
-        """Executa clique COM validação de parede"""
-        # Zona morta
-        dx = x_tela - self.center_x
-        dy = y_tela - self.center_y
-        dist = math.sqrt(dx**2 + dy**2)
+    def executar_clique_seguro(self, x_tela, y_tela, description="", ajustar_zona_morta=True):
+        """
+        Executa clique COM validação de parede
 
-        DEAD_ZONE = 80
-        if dist < DEAD_ZONE:
-            if dist > 0:
-                scale = DEAD_ZONE / dist
-                x_tela = self.center_x + int(dx * scale)
-                y_tela = self.center_y + int(dy * scale)
-            else:
-                return False
+        Args:
+            x_tela, y_tela: Coordenadas do clique
+            description: Descrição da ação
+            ajustar_zona_morta: Se True, ajusta cliques muito próximos do centro
+
+        Returns:
+            bool: True se clique foi executado
+        """
+        x_original = x_tela
+        y_original = y_tela
+
+        # Zona morta (reduzida para evitar kiting excessivo)
+        if ajustar_zona_morta:
+            dx = x_tela - self.center_x
+            dy = y_tela - self.center_y
+            dist = math.sqrt(dx**2 + dy**2)
+
+            # ZONA MORTA REDUZIDA: 30px (era 80px)
+            # Isso permite atacar mais próximo sem tanto kiting
+            DEAD_ZONE = 30
+            if dist < DEAD_ZONE:
+                if dist > 0:
+                    scale = DEAD_ZONE / dist
+                    x_tela = self.center_x + int(dx * scale)
+                    y_tela = self.center_y + int(dy * scale)
+                else:
+                    return False
 
         # Validar parede
         if not self.validar_clique(x_tela, y_tela):
-            print(f"   🚫 PAREDE! ({x_tela}, {y_tela})")
+            print(f"   🚫 PAREDE! Original: ({x_original}, {y_original}) → Ajustado: ({x_tela}, {y_tela})")
             return False
 
         # Executar
         try:
             self.device.shell(f"input tap {x_tela} {y_tela}")
+
+            # Registrar clique para visualização
+            self.ultimo_clique_x = x_tela
+            self.ultimo_clique_y = y_tela
+            self.ultimo_clique_tempo = time.time()
+
             if description:
-                print(f"   ✅ {description} ({x_tela}, {y_tela})")
+                ajuste_info = ""
+                if ajustar_zona_morta and (x_tela != x_original or y_tela != y_original):
+                    ajuste_info = f" [Ajustado: {x_original},{y_original} → {x_tela},{y_tela}]"
+                print(f"   ✅ {description} ({x_tela}, {y_tela}){ajuste_info}")
             return True
         except Exception as e:
             print(f"   ❌ Erro: {e}")
@@ -485,6 +516,51 @@ class FarmComCamera:
             dist_tiles = self.calcular_distancia_tiles(det['bbox'])
             cv2.putText(img, f"{dist_tiles:.1f}t", (cx, cy), cv2.FONT_HERSHEY_SIMPLEX, 0.5, cor, 2)
 
+        # Desenhar último clique (se recente)
+        tempo_atual = time.time()
+        if self.ultimo_clique_x is not None:
+            tempo_desde_clique = tempo_atual - self.ultimo_clique_tempo
+            if tempo_desde_clique < self.tempo_exibir_clique:
+                # Calcular opacidade baseada no tempo (fade out)
+                alpha = 1.0 - (tempo_desde_clique / self.tempo_exibir_clique)
+
+                # Cor vibrante: Magenta brilhante
+                cor_clique = (255, 0, 255)  # Magenta
+
+                # Desenhar círculos concêntricos pulsantes
+                raio_base = 40
+                raio_pulso = int(raio_base * (1 + 0.3 * (tempo_desde_clique / self.tempo_exibir_clique)))
+
+                # Círculo externo (mais transparente)
+                cv2.circle(img, (self.ultimo_clique_x, self.ultimo_clique_y), raio_pulso, cor_clique, 3)
+
+                # Círculo médio
+                cv2.circle(img, (self.ultimo_clique_x, self.ultimo_clique_y), int(raio_pulso * 0.6), cor_clique, 2)
+
+                # Círculo interno (sólido)
+                cv2.circle(img, (self.ultimo_clique_x, self.ultimo_clique_y), 8, cor_clique, -1)
+
+                # Cruz de mira
+                tam_cruz = 25
+                cv2.line(img,
+                        (self.ultimo_clique_x - tam_cruz, self.ultimo_clique_y),
+                        (self.ultimo_clique_x + tam_cruz, self.ultimo_clique_y),
+                        cor_clique, 3)
+                cv2.line(img,
+                        (self.ultimo_clique_x, self.ultimo_clique_y - tam_cruz),
+                        (self.ultimo_clique_x, self.ultimo_clique_y + tam_cruz),
+                        cor_clique, 3)
+
+                # Texto "CLIQUE!"
+                cv2.putText(img, ">>> CLIQUE <<<",
+                           (self.ultimo_clique_x - 80, self.ultimo_clique_y - raio_pulso - 10),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.8, cor_clique, 2)
+
+        # Desenhar zona morta (área mínima de clique)
+        cv2.circle(img, (self.center_x, self.center_y), 30, (128, 128, 128), 1)  # Cinza
+        cv2.putText(img, "DEAD ZONE", (self.center_x - 45, self.center_y + 45),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.4, (128, 128, 128), 1)
+
         # HUD
         cv2.putText(img, f"FPS: {self.fps_atual:.1f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
         cv2.putText(img, f"Captura: {self.metodo_captura}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
@@ -535,9 +611,9 @@ class FarmComCamera:
 
     def processar_farm(self):
         """
-        Lógica principal de farm:
+        Lógica principal de farm (MELHORADA - menos kiting):
         1. Coletar coins primeiro (prioridade)
-        2. Atacar mobs mais próximos
+        2. Atacar mobs mais próximos (SEM kiting excessivo)
         3. Validar cada clique (parede)
         4. Respeitar cooldown
         """
@@ -556,11 +632,12 @@ class FarmComCamera:
             coin_mais_proximo = min(coins, key=lambda c: self.calcular_distancia_tiles(c['bbox']))
             dist_tiles = self.calcular_distancia_tiles(coin_mais_proximo['bbox'])
 
-            # Se coin está perto (< 4 tiles), coletar
-            if dist_tiles < 4.0:
+            # Se coin está perto (< 5 tiles), coletar
+            if dist_tiles < 5.0:
                 x, y = coin_mais_proximo['center']
 
-                if self.executar_clique_seguro(x, y, f"💰 Coin ({dist_tiles:.1f}t)"):
+                # Coins não precisam de zona morta (queremos clicar direto)
+                if self.executar_clique_seguro(x, y, f"💰 Coin ({dist_tiles:.1f}t)", ajustar_zona_morta=False):
                     self.last_action_time = tempo_atual
                     self.last_action = "COIN"
                 return  # Não atacar se coletou coin
@@ -571,19 +648,32 @@ class FarmComCamera:
             mob_mais_proximo = min(mobs, key=lambda m: self.calcular_distancia_tiles(m['bbox']))
             dist_tiles = self.calcular_distancia_tiles(mob_mais_proximo['bbox'])
 
-            # Se mob está no alcance (< 5 tiles), atacar
-            if dist_tiles < 5.0:
+            # ALCANCE AUMENTADO: 1-6 tiles (era 0-5)
+            # Isso permite atacar de longe sem precisar se aproximar tanto
+            if 1.0 < dist_tiles < 6.5:
                 x, y = mob_mais_proximo['center']
                 mob_class = mob_mais_proximo['class']
 
-                if self.executar_clique_seguro(x, y, f"⚔️ {mob_class} ({dist_tiles:.1f}t)"):
+                # Se mob está MUITO perto (< 1 tile), NÃO atacar direto no mob
+                # Isso evita clicar em cima e bugar
+                if dist_tiles < 1.0:
+                    # Não fazer nada se mob está muito perto
+                    # Deixar ele atacar por auto-attack
+                    self.last_action = "AUTO_ATTACK"
+                    return
+
+                # Atacar SEM ajuste de zona morta se dist > 2 tiles
+                # Isso reduz kiting desnecessário
+                ajustar = dist_tiles < 2.0
+
+                if self.executar_clique_seguro(x, y, f"⚔️ {mob_class} ({dist_tiles:.1f}t)", ajustar_zona_morta=ajustar):
                     self.last_action_time = tempo_atual
                     self.last_action = f"ATTACK_{mob_class}"
                 return
 
         # Nenhuma ação executada
         if (tempo_atual - self.last_action_time) > 2.0:  # Log a cada 2s
-            # print("   💤 Aguardando targets...")
+            self.last_action = "IDLE"
             self.last_action_time = tempo_atual
 
     def _loop_principal_screencap(self):
