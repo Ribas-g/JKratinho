@@ -17,7 +17,7 @@ VANTAGENS:
 - 🗺️ Navegação fluida
 
 LIMITES:
-- Campo de visão limitado (16×9 tiles = 320×180px no mapa mundo)
+- Campo de visão limitado (16×9 tiles = 64×36px no mapa mundo)
 - Precisa GPS periódico para evitar erro acumulado
 """
 
@@ -96,33 +96,33 @@ class CameraVirtual:
 
         except FileNotFoundError:
             # Fallback: usar escala padrão calibrada
-            # Escala 5.0 = FOV de 320×180px (16×9 tiles)
-            # (1 pixel mundo × 5.0 = 5 pixels tela)
+            # Escala 25.0 = FOV de 64×36px (16×9 tiles)
+            # (1 pixel mundo × 25.0 = 25 pixels tela)
             print("   ⚠️ map_transform_config.json não encontrado")
-            print("   Usando escala padrão: 5.0 (FOV 320×180px)")
-            self.escala_x = 5.0
-            self.escala_y = 5.0
+            print("   Usando escala padrão: 25.0 (FOV 64×36px)")
+            self.escala_x = 25.0
+            self.escala_y = 25.0
 
     def _carregar_config_fov(self):
         """
         Calcula FOV baseado na escala do mapa
 
-        LÓGICA CORRETA:
+        LÓGICA CORRETA (calibrada via testes manuais):
         - Tela do jogo: 1600x900px
-        - Escala: 5.0 (1px mundo → 5px tela)
-        - FOV no mundo = Tela / Escala = 1600/5.0 = 320×180px
-        - 1 tile no mundo = 20px
-        - Tiles visíveis = 320/20 = 16 tiles (horizontal) × 180/20 = 9 tiles (vertical)
+        - Escala: 25.0 (1px mundo → 25px tela)
+        - FOV no mundo = Tela / Escala = 1600/25.0 = 64×36px
+        - 1 tile no mundo = 4px (DESCOBERTO VIA TESTES!)
+        - Tiles visíveis = 64/4 = 16 tiles (horizontal) × 36/4 = 9 tiles (vertical)
         """
         # Calcular FOV no mapa mundo (INVERSO da escala!)
         # fov_mundo = tela_jogo / escala
-        self.fov_largura_mapa = self.tela_largura / self.escala_x  # 1600 / 5.0 = 320px
-        self.fov_altura_mapa = self.tela_altura / self.escala_y    # 900 / 5.0 = 180px
+        self.fov_largura_mapa = self.tela_largura / self.escala_x  # 1600 / 25.0 = 64px
+        self.fov_altura_mapa = self.tela_altura / self.escala_y    # 900 / 25.0 = 36px
 
-        # Calcular tiles visíveis (1 tile no mundo = 20px)
-        self.pixels_por_tile_mundo = 20.0  # 1 tile = 20px no mapa mundo
-        self.tiles_visiveis_x = self.fov_largura_mapa / self.pixels_por_tile_mundo  # 320/20 = 16 tiles
-        self.tiles_visiveis_y = self.fov_altura_mapa / self.pixels_por_tile_mundo   # 180/20 = 9 tiles
+        # Calcular tiles visíveis (1 tile no mundo = 4px - CALIBRADO!)
+        self.pixels_por_tile_mundo = 4.0  # 1 tile = 4px no mapa mundo
+        self.tiles_visiveis_x = self.fov_largura_mapa / self.pixels_por_tile_mundo  # 64/4 = 16 tiles
+        self.tiles_visiveis_y = self.fov_altura_mapa / self.pixels_por_tile_mundo   # 36/4 = 9 tiles
 
         # 1 tile na tela do jogo (para exibição)
         self.pixels_por_tile_jogo = 100  # 1 tile = 100px na tela do jogo
@@ -223,10 +223,11 @@ class CameraVirtual:
         1. Converter mundo → tela do jogo DIRETO
         2. Clicar no chão
 
-        ESCALA CORRETA:
+        ESCALA CORRETA (calibrada via testes manuais):
         - Tela do jogo: 1600×900px
-        - Mapa mundo: FOV = 320×180px
-        - Escala = 1600 ÷ 320 = 5.0 (1px mundo = 5px tela)
+        - Mapa mundo: FOV = 64×36px
+        - Escala = 1600 ÷ 64 = 25.0 (1px mundo = 25px tela)
+        - 1 tile = 4px no mapa mundo
 
         Args:
             x_mundo, y_mundo: Coordenadas absolutas no mundo
@@ -244,9 +245,9 @@ class CameraVirtual:
         delta_x = x_mundo - self.pos_x
         delta_y = y_mundo - self.pos_y
 
-        # 2. Aplicar escala correta: 5.0 (320px mundo → 1600px tela)
+        # 2. Aplicar escala correta: 25.0 (64px mundo → 1600px tela)
         #    x_tela = centro + (delta_mundo * escala)
-        #    Com escala 5.0: 1px mundo = 5px tela
+        #    Com escala 25.0: 1px mundo = 25px tela
         x_tela = self.centro_x + (delta_x * self.escala_x)
         y_tela = self.centro_y + (delta_y * self.escala_y)
 
@@ -1035,11 +1036,11 @@ if __name__ == "__main__":
         print("  [H] - Toggle histórico")
         print("  [ESC] - Sair")
         print("=" * 70)
-        print("\n📐 CÁLCULO DA ESCALA CORRETA:")
+        print("\n📐 ESCALA CALIBRADA (via testes manuais):")
         print("   - Tela do jogo: 1600×900px")
-        print("   - Mapa mundo: 1 tile = 20px")
-        print("   - Escala: 5.0 (1px mundo = 5px tela)")
-        print("   - FOV: 16×9 tiles = 320×180px no mapa")
+        print("   - Mapa mundo: 1 tile = 4px")
+        print("   - Escala: 25.0 (1px mundo = 25px tela)")
+        print("   - FOV: 16×9 tiles = 64×36px no mapa")
         print("=" * 70)
 
         # Estado do controle interativo
