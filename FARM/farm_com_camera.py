@@ -359,6 +359,59 @@ class FarmComCamera:
         self.visualizador.atualizar_inimigos(inimigos_mundo)
         self.visualizador.atualizar()
 
+    def processar_farm(self):
+        """
+        Lógica principal de farm:
+        1. Coletar coins primeiro (prioridade)
+        2. Atacar mobs mais próximos
+        3. Validar cada clique (parede)
+        4. Respeitar cooldown
+        """
+        # Verificar cooldown
+        tempo_atual = time.time()
+        if (tempo_atual - self.last_action_time) < self.action_cooldown:
+            return  # Ainda em cooldown
+
+        # Separar detecções
+        coins = [d for d in self.deteccoes_atuais if d['class'] == 'coin']
+        mobs = [d for d in self.deteccoes_atuais if d['class'] != 'coin']
+
+        # PRIORIDADE 1: Coletar coins
+        if len(coins) > 0:
+            # Pegar coin mais próximo
+            coin_mais_proximo = min(coins, key=lambda c: self.calcular_distancia_tiles(c['bbox']))
+            dist_tiles = self.calcular_distancia_tiles(coin_mais_proximo['bbox'])
+
+            # Se coin está perto (< 4 tiles), coletar
+            if dist_tiles < 4.0:
+                x, y = coin_mais_proximo['center']
+
+                if self.executar_clique_seguro(x, y, f"💰 Coin ({dist_tiles:.1f}t)"):
+                    self.last_action_time = tempo_atual
+                    self.last_action = "COIN"
+                return  # Não atacar se coletou coin
+
+        # PRIORIDADE 2: Atacar mobs
+        if len(mobs) > 0:
+            # Pegar mob mais próximo
+            mob_mais_proximo = min(mobs, key=lambda m: self.calcular_distancia_tiles(m['bbox']))
+            dist_tiles = self.calcular_distancia_tiles(mob_mais_proximo['bbox'])
+
+            # Se mob está no alcance (< 5 tiles), atacar
+            if dist_tiles < 5.0:
+                x, y = mob_mais_proximo['center']
+                mob_class = mob_mais_proximo['class']
+
+                if self.executar_clique_seguro(x, y, f"⚔️ {mob_class} ({dist_tiles:.1f}t)"):
+                    self.last_action_time = tempo_atual
+                    self.last_action = f"ATTACK_{mob_class}"
+                return
+
+        # Nenhuma ação executada
+        if (tempo_atual - self.last_action_time) > 2.0:  # Log a cada 2s
+            # print("   💤 Aguardando targets...")
+            self.last_action_time = tempo_atual
+
     def run(self):
         """Loop principal"""
         if not self.inicializar():
@@ -386,15 +439,8 @@ class FarmComCamera:
                 # Detectar objetos
                 self.deteccoes_atuais = self.detectar_objetos(frame)
 
-                # TODO: Implementar lógica de farm aqui
-                # - Atacar inimigos mais próximos
-                # - Coletar coins
-                # - Kiting
-                # Exemplo:
-                # for det in self.deteccoes_atuais:
-                #     if det['class'] == 'coin':
-                #         x, y = det['center']
-                #         self.executar_clique_seguro(x, y, "Coletar coin")
+                # 🎯 LÓGICA DE FARM
+                self.processar_farm()
 
                 # Atualizar visualizador
                 self.atualizar_visualizador()
