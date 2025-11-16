@@ -88,7 +88,11 @@ class CameraVirtual:
         x_tela = centro + (delta_mundo * escala)
         """
         try:
-            with open('map_transform_config.json', 'r', encoding='utf-8') as f:
+            # Caminho baseado no diretório do script
+            pasta_farm = Path(__file__).parent
+            config_path = pasta_farm / 'map_transform_config.json'
+
+            with open(config_path, 'r', encoding='utf-8') as f:
                 config = json.load(f)
 
             self.escala_x = config['escala']['x']
@@ -144,7 +148,13 @@ class CameraVirtual:
         - 0 = parede/obstáculo
         """
         try:
-            dados = np.load('FARM/mapa_mundo_processado.npz')
+            # Caminho absoluto baseado no diretório do script
+            pasta_farm = Path(__file__).parent
+            caminho_matriz = pasta_farm / 'mapa_mundo_processado.npz'
+
+            print(f"   📂 Procurando matriz em: {caminho_matriz}")
+
+            dados = np.load(str(caminho_matriz))
             self.matriz_walkable = dados['walkable']
             self.mundo_largura = dados['dimensoes'][0]  # X (largura)
             self.mundo_altura = dados['dimensoes'][1]   # Y (altura)
@@ -155,8 +165,10 @@ class CameraVirtual:
             print(f"   ✅ Matriz walkable carregada: {self.mundo_largura}x{self.mundo_altura}")
             print(f"      Versão: {versao}, Formato: {formato}")
             print(f"      Shape real: {self.matriz_walkable.shape}")
-        except FileNotFoundError:
-            print("   ⚠️ FARM/mapa_mundo_processado.npz não encontrado - validação de paredes desabilitada")
+        except FileNotFoundError as e:
+            print(f"   ⚠️ Arquivo não encontrado: {e}")
+            print(f"   ⚠️ Procurado em: {Path(__file__).parent / 'mapa_mundo_processado.npz'}")
+            print("   ⚠️ Validação de paredes DESABILITADA")
             self.matriz_walkable = None
             self.mundo_largura = None
             self.mundo_altura = None
@@ -1207,14 +1219,19 @@ if __name__ == "__main__":
                     'observacoes': f'Escala calibrada manualmente - 1 tile = {32/camera.escala_x:.1f}px mundo'
                 }
 
-                with open('camera_virtual_config.json', 'w', encoding='utf-8') as f:
+                # Caminhos baseados no diretório do script
+                pasta_farm = Path(__file__).parent
+                path_config_fov = pasta_farm / 'camera_virtual_config.json'
+                path_config_mapa = pasta_farm / 'map_transform_config.json'
+
+                with open(path_config_fov, 'w', encoding='utf-8') as f:
                     json.dump(config_fov, f, indent=2, ensure_ascii=False)
 
-                with open('map_transform_config.json', 'w', encoding='utf-8') as f:
+                with open(path_config_mapa, 'w', encoding='utf-8') as f:
                     json.dump(config_escala, f, indent=2, ensure_ascii=False)
 
-                print(f"   ✅ Salvo em: camera_virtual_config.json")
-                print(f"   ✅ Salvo em: map_transform_config.json")
+                print(f"   ✅ Salvo em: {path_config_fov}")
+                print(f"   ✅ Salvo em: {path_config_mapa}")
                 print()
             elif key == ord('g') or key == ord('G'):
                 print("\n\n🔄 Forçando correção GPS...")
