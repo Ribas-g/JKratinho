@@ -255,14 +255,11 @@ class FarmComCamera:
         self.last_action_time = 0
         self.action_cooldown = 1.0  # 1000ms entre ações (aumentado para debug)
 
-        # Rastreamento de cliques (para visualização)
-        self.ultimo_clique_x = None
-        self.ultimo_clique_y = None
-        self.ultimo_clique_original_x = None
-        self.ultimo_clique_original_y = None
-        self.ultimo_clique_tempo = 0
-        self.tempo_exibir_clique = 2.5  # Mostrar clique por 2.5 segundos
-        self.clique_foi_ajustado = False
+        # Debug de paredes (screenshots quando detectar parede)
+        self.pasta_debug_paredes = Path(__file__).parent / "debug_paredes"
+        self.pasta_debug_paredes.mkdir(exist_ok=True)
+        self.contador_debug_parede = 0
+        self.ultimo_frame_capturado = None  # Guardar último frame para debug
 
         # Janela de visualização do jogo (frame)
         self.mostrar_deteccoes = True
@@ -303,13 +300,51 @@ class FarmComCamera:
         return self.camera.tela_para_mundo(x_tela, y_tela)
 
     def validar_clique(self, x_tela, y_tela):
-        """Valida se clique é seguro (não é parede)"""
+        """
+        Valida se clique é seguro (não é parede)
+
+        Se detectar parede, tira screenshot de debug
+        """
         x_mundo, y_mundo = self.tela_para_mundo(x_tela, y_tela)
 
         if x_mundo is None:
             return False
 
-        return self.camera.validar_posicao(x_mundo, y_mundo)
+        eh_valido = self.camera.validar_posicao(x_mundo, y_mundo)
+
+        # Se detectou PAREDE, tirar screenshot de debug
+        if not eh_valido and self.ultimo_frame_capturado is not None:
+            self.salvar_screenshot_parede(x_tela, y_tela, x_mundo, y_mundo)
+
+        return eh_valido
+
+    def salvar_screenshot_parede(self, x_tela, y_tela, x_mundo, y_mundo):
+        """Salva screenshot quando detectar parede para debug"""
+        try:
+            self.contador_debug_parede += 1
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+
+            # Criar cópia do frame com marcação
+            frame_debug = self.ultimo_frame_capturado.copy()
+
+            # Desenhar cruz VERMELHA onde tentou clicar
+            cv2.drawMarker(frame_debug, (x_tela, y_tela), (0, 0, 255),
+                          cv2.MARKER_CROSS, 50, 3)
+
+            # Texto informativo
+            texto = f"PAREDE! Tela:({x_tela},{y_tela}) Mundo:({x_mundo:.0f},{y_mundo:.0f})"
+            cv2.putText(frame_debug, texto, (10, 30),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+
+            # Salvar
+            filename = f"parede_{self.contador_debug_parede:03d}_{timestamp}.png"
+            filepath = self.pasta_debug_paredes / filename
+            cv2.imwrite(str(filepath), frame_debug)
+
+            print(f"   📸 Screenshot de parede salvo: {filename}")
+
+        except Exception as e:
+            print(f"   ⚠️ Erro ao salvar screenshot: {e}")
 
     def executar_clique_seguro(self, x_tela, y_tela, description="", ajustar_zona_morta=True):
         """
@@ -358,17 +393,10 @@ class FarmComCamera:
 
             self.device.shell(f"input tap {x_tela} {y_tela}")
 
-            # Registrar AMBOS os cliques para visualização
-            self.ultimo_clique_x = x_tela
-            self.ultimo_clique_y = y_tela
-            self.ultimo_clique_original_x = x_original
-            self.ultimo_clique_original_y = y_original
-            self.ultimo_clique_tempo = time.time()
-            self.clique_foi_ajustado = (x_tela != x_original or y_tela != y_original)
-
             if description:
+                clique_foi_ajustado = (x_tela != x_original or y_tela != y_original)
                 ajuste_info = ""
-                if self.clique_foi_ajustado:
+                if clique_foi_ajustado:
                     delta_x = x_tela - x_original
                     delta_y = y_tela - y_original
                     ajuste_info = f" [⚠️ AJUSTADO: Δx={delta_x:+d}, Δy={delta_y:+d}]"
@@ -532,105 +560,10 @@ class FarmComCamera:
             dist_tiles = self.calcular_distancia_tiles(det['bbox'])
             cv2.putText(img, f"{dist_tiles:.1f}t", (cx, cy), cv2.FONT_HERSHEY_SIMPLEX, 0.5, cor, 2)
 
-        # Desenhar último clique (se recente)
-        tempo_atual = time.time()
-        if self.ultimo_clique_x is not None:
-            tempo_desde_clique = tempo_atual - self.ultimo_clique_tempo
-            if tempo_desde_clique < self.tempo_exibir_clique:
-                # Progresso do fade (0 = novo, 1 = expirado)
-                progresso = tempo_desde_clique / self.tempo_exibir_clique
-
-                # SE HOUVE AJUSTE: Desenhar AMBOS os cliques
-                if self.clique_foi_ajustado and self.ultimo_clique_original_x is not None:
-                    # 1. CLIQUE ORIGINAL (VERMELHO - onde detectou o mob)
-                    cor_original = (0, 0, 255)  # Vermelho
-                    raio_original = 25
-
-                    cv2.circle(img, (self.ultimo_clique_original_x, self.ultimo_clique_original_y),
-                              raio_original, cor_original, 2)
-                    cv2.circle(img, (self.ultimo_clique_original_x, self.ultimo_clique_original_y),
-                              5, cor_original, -1)
-
-                    # Linha conectando original → final
-                    cv2.arrowedLine(img,
-                                   (self.ultimo_clique_original_x, self.ultimo_clique_original_y),
-                                   (self.ultimo_clique_x, self.ultimo_clique_y),
-                                   (255, 255, 0), 2, tipLength=0.3)  # Amarelo
-
-                    cv2.putText(img, "ORIGINAL (MOB)",
-                               (self.ultimo_clique_original_x - 60, self.ultimo_clique_original_y - raio_original - 5),
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.5, cor_original, 2)
-
-                # 2. CLIQUE FINAL (MAGENTA - onde realmente clicou)
-                cor_clique = (255, 0, 255)  # Magenta
-
-                # Desenhar círculos concêntricos pulsantes
-                raio_base = 40
-                raio_pulso = int(raio_base * (1 + 0.5 * progresso))
-
-                # Círculo externo (pulsante)
-                cv2.circle(img, (self.ultimo_clique_x, self.ultimo_clique_y), raio_pulso, cor_clique, 4)
-
-                # Círculo médio
-                cv2.circle(img, (self.ultimo_clique_x, self.ultimo_clique_y), int(raio_pulso * 0.6), cor_clique, 3)
-
-                # Círculo interno (sólido)
-                cv2.circle(img, (self.ultimo_clique_x, self.ultimo_clique_y), 10, cor_clique, -1)
-
-                # Cruz de mira GIGANTE
-                tam_cruz = 30
-                cv2.line(img,
-                        (self.ultimo_clique_x - tam_cruz, self.ultimo_clique_y),
-                        (self.ultimo_clique_x + tam_cruz, self.ultimo_clique_y),
-                        cor_clique, 4)
-                cv2.line(img,
-                        (self.ultimo_clique_x, self.ultimo_clique_y - tam_cruz),
-                        (self.ultimo_clique_x, self.ultimo_clique_y + tam_cruz),
-                        cor_clique, 4)
-
-                # Texto "CLIQUE EXECUTADO!"
-                texto = ">>> CLIQUE AQUI <<<" if not self.clique_foi_ajustado else ">>> CLIQUE AJUSTADO <<<"
-                cv2.putText(img, texto,
-                           (self.ultimo_clique_x - 100, self.ultimo_clique_y - raio_pulso - 15),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, cor_clique, 3)
-
-                # Coordenadas exatas
-                cv2.putText(img, f"({self.ultimo_clique_x}, {self.ultimo_clique_y})",
-                           (self.ultimo_clique_x - 50, self.ultimo_clique_y + raio_pulso + 20),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, cor_clique, 2)
-
-        # Desenhar zona morta (área mínima de clique)
-        cv2.circle(img, (self.center_x, self.center_y), 30, (128, 128, 128), 2)  # Cinza
-        cv2.putText(img, "DEAD ZONE 30px", (self.center_x - 60, self.center_y + 45),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (128, 128, 128), 2)
-
-        # HUD (canto superior esquerdo)
-        y_offset = 30
-        line_height = 30
-        cv2.putText(img, f"FPS: {self.fps_atual:.1f}", (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-        y_offset += line_height
-
-        cv2.putText(img, f"Captura: {self.metodo_captura}", (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
-        y_offset += line_height
-
-        cv2.putText(img, f"Deteccoes: {len(self.deteccoes_atuais)}", (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-        y_offset += line_height
-
-        cv2.putText(img, f"Ultima acao: {self.last_action}", (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-        y_offset += line_height
-
-        # Info do último clique
-        if self.ultimo_clique_x is not None:
-            tempo_desde = time.time() - self.ultimo_clique_tempo
-            if tempo_desde < self.tempo_exibir_clique:
-                cor_info = (255, 0, 255) if self.clique_foi_ajustado else (0, 255, 0)
-                cv2.putText(img, f"Ultimo clique: ({self.ultimo_clique_x}, {self.ultimo_clique_y})",
-                           (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.6, cor_info, 2)
-                y_offset += line_height
-
-                if self.clique_foi_ajustado:
-                    cv2.putText(img, f"(Original: {self.ultimo_clique_original_x}, {self.ultimo_clique_original_y})",
-                               (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
+        # HUD simples (apenas YOLO + FPS)
+        cv2.putText(img, f"FPS: {self.fps_atual:.1f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        cv2.putText(img, f"Deteccoes: {len(self.deteccoes_atuais)}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        cv2.putText(img, f"Ultima acao: {self.last_action}", (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
         return img
 
@@ -751,6 +684,9 @@ class FarmComCamera:
                     time.sleep(0.1)
                     continue
 
+                # Salvar frame para debug de paredes
+                self.ultimo_frame_capturado = frame.copy()
+
                 # Calcular FPS
                 self.fps_counter += 1
                 tempo_decorrido = time.time() - self.fps_start_time
@@ -830,6 +766,9 @@ class FarmComCamera:
 
                     if not self.running:
                         break
+
+                    # Salvar frame para debug de paredes
+                    self.ultimo_frame_capturado = frame.copy()
 
                     # Calcular FPS
                     self.fps_counter += 1
