@@ -248,15 +248,24 @@ class FarmIntegrado:
         - Atualiza GPS antes de procurar mobs (evita desorientação)
         - Usa GPS a cada 5-10 movimentos para manter precisão
         - GPS rápido: ~0.3-0.5s (abre/fecha mapa rapidamente)
+
+        NAVEGAÇÃO PARA CENTRO:
+        - Se na borda (>70% do raio), navega PARA o centro usando A*
+        - Monitora mobs durante navegação (cancela se encontrar)
+        - Usa pathfinding para evitar paredes
         """
         print("   🔍 Procurando mobs na área...")
 
         # GPS INTELIGENTE: Atualizar posição se solicitado
+        na_borda = False
+        pos_atual = None
+
         if atualizar_gps:
             print("   📡 Atualizando GPS antes de procurar...")
             try:
                 pos = self.gps.get_current_position(keep_map_open=False, verbose=False)
                 if pos and 'x' in pos and 'y' in pos:
+                    pos_atual = pos
                     print(f"   ✅ Posição atual: ({pos['x']:.0f}, {pos['y']:.0f})")
 
                     # Verificar se ainda está na área de farm
@@ -273,6 +282,9 @@ class FarmIntegrado:
                         # Voltar para zona
                         self.navegar_para_zona()
                         return
+                    elif dist > radius * 0.7:  # borda_threshold
+                        print(f"   ⚠️ NA BORDA da área ({dist:.0f}/{radius}px, >70%)")
+                        na_borda = True
                     else:
                         print(f"   ✅ Dentro da área (distância: {dist:.0f}/{radius}px)")
 
@@ -293,6 +305,13 @@ class FarmIntegrado:
             # Nenhum mob visível - mover para explorar área
             print("   ➡️ Nenhum mob visível, explorando área...")
 
+            # SE NA BORDA: Navegar para centro usando A*
+            if na_borda and pos_atual:
+                print("   🎯 NA BORDA - Navegando para CENTRO com A*...")
+                self.navegar_para_centro_inteligente(pos_atual)
+                return
+
+            # SENÃO: Movimento aleatório normal
             # Movimento em coordenadas de TELA (não usar GPS)
             # Calcular ponto aleatório a 2-3 tiles de distância (MENOS AGRESSIVO)
 
@@ -325,6 +344,146 @@ class FarmIntegrado:
             self.farm_bot.executar_tap(move_x, move_y, "🔍 Explorar área")
 
             time.sleep(1.2)  # Esperar movimento (era 1.5s, agora 1.2s)
+
+    def navegar_para_centro_inteligente(self, pos_atual):
+        """
+        Navega PARA o centro do bioma usando A* pathfinding
+
+        ESTRATÉGIA INTELIGENTE:
+        - Calcula path A* até o centro
+        - Pega próximo waypoint visível no mapa
+        - Abre mapa, clica no waypoint, fecha mapa
+        - Personagem continua andando automaticamente
+        - Main loop monitora mobs (cancela se encontrar)
+
+        Args:
+            pos_atual: Posição atual do GPS {'x': ..., 'y': ...}
+        """
+        try:
+            print("   🧭 Calculando rota para CENTRO com A*...")
+
+            # Dados da zona
+            zone_data = self.zones[self.selected_zone]
+            center_x = zone_data['farm_area']['center']['x']
+            center_y = zone_data['farm_area']['center']['y']
+
+            x_atual = int(pos_atual['x'])
+            y_atual = int(pos_atual['y'])
+
+            print(f"      Posição atual: ({x_atual}, {y_atual})")
+            print(f"      Centro bioma: ({center_x}, {center_y})")
+
+            # Usar pathfinder do navegador para calcular caminho
+            if not self.navegador or not hasattr(self.navegador, 'pathfinder'):
+                print("   ⚠️ Pathfinder não disponível, usando movimento direto")
+                self._navegar_direto_para_centro(center_x, center_y)
+                return
+
+            # Calcular path A*
+            path = self.navegador.pathfinder.find_path(x_atual, y_atual, center_x, center_y)
+
+            if not path or len(path) < 2:
+                print("   ⚠️ Pathfinding falhou, tentando movimento direto...")
+                self._navegar_direto_para_centro(center_x, center_y)
+                return
+
+            print(f"   ✅ Path calculado: {len(path)} waypoints")
+
+            # ESTRATÉGIA: Pegar waypoint intermediário (não ir direto ao centro)
+            # Queremos apenas nos APROXIMAR do centro, não ir exatamente até lá
+            # Pegar waypoint a 30-50% do caminho
+
+            import random
+            progresso = random.uniform(0.3, 0.5)  # 30-50% do caminho
+            indice_waypoint = min(int(len(path) * progresso), len(path) - 1)
+            indice_waypoint = max(1, indice_waypoint)  # No mínimo waypoint 1
+
+            wp_x, wp_y = path[indice_waypoint]
+
+            print(f"   🎯 Waypoint escolhido: ({wp_x}, {wp_y}) - {indice_waypoint+1}/{len(path)} ({progresso*100:.0f}% do caminho)")
+
+            # Abrir mapa, clicar no waypoint, fechar mapa
+            print("   🗺️ Abrindo mapa para clicar waypoint...")
+
+            # Abrir mapa
+            self.farm_bot.executar_tap(
+                self.farm_bot.config.map_button_x,
+                self.farm_bot.config.map_button_y,
+                "📍 Abrir mapa"
+            )
+            time.sleep(0.4)  # Esperar mapa abrir
+
+            # Converter coordenadas mundo → tela do mapa
+            # Usar função do GPS para isso
+            if hasattr(self.gps, 'converter_mundo_para_mapa'):
+                map_x, map_y = self.gps.converter_mundo_para_mapa(wp_x, wp_y, pos_atual['x'], pos_atual['y'])
+            else:
+                # Fallback: converter manualmente (simplificado)
+                # O mapa no jogo geralmente tem escala ~1px por tile
+                escala_mapa = 1.0
+                centro_mapa_x = 800  # Centro do minimapa (ajustar conforme jogo)
+                centro_mapa_y = 450
+
+                delta_x = (wp_x - pos_atual['x']) * escala_mapa
+                delta_y = (wp_y - pos_atual['y']) * escala_mapa
+
+                map_x = int(centro_mapa_x + delta_x)
+                map_y = int(centro_mapa_y + delta_y)
+
+            print(f"   📍 Clicando waypoint no mapa: tela ({map_x}, {map_y}) = mundo ({wp_x}, {wp_y})")
+
+            # Clicar no waypoint
+            self.farm_bot.executar_tap(map_x, map_y, "🎯 Clicar waypoint")
+            time.sleep(0.3)
+
+            # Fechar mapa (personagem continua andando automaticamente)
+            self.farm_bot.executar_tap(
+                self.farm_bot.config.map_button_x,
+                self.farm_bot.config.map_button_y,
+                "🗺️ Fechar mapa"
+            )
+
+            print("   ✅ Navegação iniciada! Personagem andando para centro...")
+            print("   👀 Main loop monitorará mobs (cancela se encontrar)")
+
+            time.sleep(2.0)  # Esperar um pouco para personagem começar a andar
+
+        except Exception as e:
+            print(f"   ❌ Erro ao navegar para centro: {e}")
+            import traceback
+            traceback.print_exc()
+
+    def _navegar_direto_para_centro(self, center_x, center_y):
+        """
+        Fallback: navegação direta para centro (sem pathfinding)
+        Usado quando A* não está disponível
+        """
+        print("   📍 Navegação direta para centro (sem A*)...")
+
+        # Abrir mapa
+        self.farm_bot.executar_tap(
+            self.farm_bot.config.map_button_x,
+            self.farm_bot.config.map_button_y,
+            "📍 Abrir mapa"
+        )
+        time.sleep(0.4)
+
+        # Clicar no centro (simplificado - assumir centro do mapa)
+        centro_mapa_x = 800
+        centro_mapa_y = 450
+
+        self.farm_bot.executar_tap(centro_mapa_x, centro_mapa_y, "🎯 Clicar centro")
+        time.sleep(0.3)
+
+        # Fechar mapa
+        self.farm_bot.executar_tap(
+            self.farm_bot.config.map_button_x,
+            self.farm_bot.config.map_button_y,
+            "🗺️ Fechar mapa"
+        )
+
+        print("   ✅ Navegação iniciada (direta)!")
+        time.sleep(2.0)
 
     def executar_farm_loop(self):
         """Loop principal de farm"""
@@ -361,8 +520,9 @@ class FarmIntegrado:
         check_interval = 5.0  # Verificar área a cada 5 segundos
         heartbeat_interval = 30.0  # Log de status a cada 30 segundos
         gps_check_interval = 60.0  # Verificar GPS a cada 60 segundos (background)
-        gps_sem_mob_timeout = 15.0  # GPS se não achar mob por 15 segundos
+        gps_sem_mob_timeout = 5.0  # GPS se não achar mob por 5 segundos (REDUZIDO!)
         max_movimentos_sem_gps = 8  # GPS a cada 8 movimentos de procura
+        borda_threshold = 0.7  # Considera "borda" se >70% do raio
         failed_captures = 0
         max_failed_captures = 10  # Parar após 10 falhas consecutivas
 
