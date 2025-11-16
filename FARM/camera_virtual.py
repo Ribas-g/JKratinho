@@ -72,6 +72,13 @@ class CameraVirtual:
         self._carregar_matriz_walkable()
         self.validacao_parede_ativa = True  # Pode ser desabilitada no modo interativo
 
+        # OFFSET DE CORREÇÃO (compensar erro do GPS)
+        # Descoberto via debug: GPS retorna Y com offset de ~25-29px
+        self.offset_correcao_x = 0
+        self.offset_correcao_y = -25  # Aplicar -25px no Y para compensar
+
+        print(f"   ⚙️ Offset de correção: X={self.offset_correcao_x:+d}, Y={self.offset_correcao_y:+d}")
+
         # Imprimir informações de inicialização
         print("🎥 Câmera Virtual inicializada!")
         print(f"   Tela do jogo: {self.tela_largura}x{self.tela_altura}px (1 tile = {self.pixels_por_tile_jogo}px)")
@@ -88,7 +95,11 @@ class CameraVirtual:
         x_tela = centro + (delta_mundo * escala)
         """
         try:
-            with open('map_transform_config.json', 'r', encoding='utf-8') as f:
+            # Caminho baseado no diretório do script
+            pasta_farm = Path(__file__).parent
+            config_path = pasta_farm / 'map_transform_config.json'
+
+            with open(config_path, 'r', encoding='utf-8') as f:
                 config = json.load(f)
 
             self.escala_x = config['escala']['x']
@@ -136,20 +147,40 @@ class CameraVirtual:
     def _carregar_matriz_walkable(self):
         """
         Carrega matriz walkable para validação de paredes
+
+        FORMATO DA MATRIZ V2.0:
+        - Shape: (largura, altura) = (X, Y)
+        - Acesso: matriz[x, y]
+        - 1 = andável (chão)
+        - 0 = parede/obstáculo
         """
         try:
-            dados = np.load('mapa_mundo_processado.npz')
+            # Caminho absoluto baseado no diretório do script
+            pasta_farm = Path(__file__).parent
+            caminho_matriz = pasta_farm / 'mapa_mundo_processado.npz'
+
+            print(f"   📂 Procurando matriz em: {caminho_matriz}")
+
+            dados = np.load(str(caminho_matriz))
             self.matriz_walkable = dados['walkable']
-            self.mundo_largura = dados['dimensoes'][0]
-            self.mundo_altura = dados['dimensoes'][1]
+            self.mundo_largura = dados['dimensoes'][0]  # X (largura)
+            self.mundo_altura = dados['dimensoes'][1]   # Y (altura)
+
+            formato = dados.get('formato', 'desconhecido')
+            versao = dados.get('versao', 'desconhecido')
+
             print(f"   ✅ Matriz walkable carregada: {self.mundo_largura}x{self.mundo_altura}")
-        except FileNotFoundError:
-            print("   ⚠️ mapa_mundo_processado.npz não encontrado - validação de paredes desabilitada")
+            print(f"      Versão: {versao}, Formato: {formato}")
+            print(f"      Shape real: {self.matriz_walkable.shape}")
+        except FileNotFoundError as e:
+            print(f"   ⚠️ Arquivo não encontrado: {e}")
+            print(f"   ⚠️ Procurado em: {Path(__file__).parent / 'mapa_mundo_processado.npz'}")
+            print("   ⚠️ Validação de paredes DESABILITADA")
             self.matriz_walkable = None
             self.mundo_largura = None
             self.mundo_altura = None
 
-    def validar_posicao(self, x_mundo, y_mundo):
+    def validar_posicao(self, x_mundo, y_mundo, debug=False):
         """
         Valida se posição no mundo é andável (não é parede)
 
@@ -159,6 +190,7 @@ class CameraVirtual:
         Args:
             x_mundo: coordenada X no mundo
             y_mundo: coordenada Y no mundo
+            debug: Se True, mostra informações detalhadas
 
         Returns:
             bool: True se andável, False se parede ou fora do mapa
@@ -166,24 +198,66 @@ class CameraVirtual:
         if self.matriz_walkable is None or not self.validacao_parede_ativa:
             return True  # Sem validação, aceitar tudo
 
+        # APLICAR OFFSET DE CORREÇÃO (compensar erro do GPS)
+        x_mundo_corrigido = x_mundo + self.offset_correcao_x
+        y_mundo_corrigido = y_mundo + self.offset_correcao_y
+
         # Arredondar para centro do pixel
-        x = int(round(x_mundo))
-        y = int(round(y_mundo))
+        x = int(round(x_mundo_corrigido))
+        y = int(round(y_mundo_corrigido))
+
+        if debug:
+            print(f"\n   🔍 DEBUG VALIDAÇÃO:")
+            print(f"      Player: ({self.pos_x:.1f}, {self.pos_y:.1f})")
+            print(f"      Target mundo (original): ({x_mundo:.1f}, {y_mundo:.1f})")
+            print(f"      Target mundo (corrigido): ({x_mundo_corrigido:.1f}, {y_mundo_corrigido:.1f})")
+            print(f"      Offset aplicado: ({self.offset_correcao_x:+d}, {self.offset_correcao_y:+d})")
+            print(f"      Target int: ({x}, {y})")
+            print(f"      Limites matriz: [0-{self.mundo_largura}] x [0-{self.mundo_altura}]")
 
         # Verificar limites
         if x < 1 or x >= self.mundo_largura - 1:
+            if debug:
+                print(f"      ❌ FORA DOS LIMITES X: {x} (limites: 1-{self.mundo_largura-1})")
             return False
         if y < 1 or y >= self.mundo_altura - 1:
+            if debug:
+                print(f"      ❌ FORA DOS LIMITES Y: {y} (limites: 1-{self.mundo_altura-1})")
             return False
 
         # Verificar área 3x3 ao redor do ponto (compensar drift/alinhamento)
         # Se QUALQUER pixel na área for andável, considerar OK
+        #
+        # IMPORTANTE: Matriz está em formato [X, Y] não [Y, X]!
+        # Descoberto via debug - coluna direita tinha ✓, esquerda tinha ✗
+        if debug:
+            print(f"      Verificando área 3x3:")
+            print(f"      Shape da matriz: {self.matriz_walkable.shape}")
+            print(f"      ✅ USANDO matriz[x, y] (inversão corrigida)")
+
+        andavel_encontrado = False
         for dy in [-1, 0, 1]:
             for dx in [-1, 0, 1]:
-                if self.matriz_walkable[y + dy, x + dx] == 1:
-                    return True  # Pelo menos um pixel andável encontrado
+                # CORREÇÃO APLICADA: matriz[x, y] ao invés de matriz[y, x]
+                try:
+                    valor = self.matriz_walkable[x + dx, y + dy]
+                except:
+                    valor = -1
 
-        return False  # Toda área é parede
+                if debug:
+                    simbolo = "✓" if valor == 1 else "✗"
+                    print(f"         matriz[{x+dx:4d}, {y+dy:4d}] = {valor} {simbolo}")
+
+                if valor == 1:
+                    andavel_encontrado = True
+
+        if debug:
+            if andavel_encontrado:
+                print(f"      ✅ ANDÁVEL (pelo menos 1 pixel livre)")
+            else:
+                print(f"      🚫 PAREDE (toda área bloqueada)")
+
+        return andavel_encontrado
 
     def inicializar_posicao(self):
         """
@@ -1158,14 +1232,19 @@ if __name__ == "__main__":
                     'observacoes': f'Escala calibrada manualmente - 1 tile = {32/camera.escala_x:.1f}px mundo'
                 }
 
-                with open('camera_virtual_config.json', 'w', encoding='utf-8') as f:
+                # Caminhos baseados no diretório do script
+                pasta_farm = Path(__file__).parent
+                path_config_fov = pasta_farm / 'camera_virtual_config.json'
+                path_config_mapa = pasta_farm / 'map_transform_config.json'
+
+                with open(path_config_fov, 'w', encoding='utf-8') as f:
                     json.dump(config_fov, f, indent=2, ensure_ascii=False)
 
-                with open('map_transform_config.json', 'w', encoding='utf-8') as f:
+                with open(path_config_mapa, 'w', encoding='utf-8') as f:
                     json.dump(config_escala, f, indent=2, ensure_ascii=False)
 
-                print(f"   ✅ Salvo em: camera_virtual_config.json")
-                print(f"   ✅ Salvo em: map_transform_config.json")
+                print(f"   ✅ Salvo em: {path_config_fov}")
+                print(f"   ✅ Salvo em: {path_config_mapa}")
                 print()
             elif key == ord('g') or key == ord('G'):
                 print("\n\n🔄 Forçando correção GPS...")

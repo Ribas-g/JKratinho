@@ -98,6 +98,20 @@ class VisualizadorFarm:
         if not self.rodando:
             return
 
+        # Garantir que janela seja WINDOW_NORMAL (redimensionável)
+        # Verificar propriedade da janela e recriar se necessário
+        try:
+            # Se janela não existe ou não é NORMAL, recriar
+            propriedade = cv2.getWindowProperty(self.janela_nome, cv2.WND_PROP_AUTOSIZE)
+            if propriedade != 0:  # 0 = WINDOW_NORMAL, 1 = WINDOW_AUTOSIZE
+                cv2.destroyWindow(self.janela_nome)
+                cv2.namedWindow(self.janela_nome, cv2.WINDOW_NORMAL)
+                cv2.resizeWindow(self.janela_nome, 1400, 900)
+        except:
+            # Janela não existe, criar
+            cv2.namedWindow(self.janela_nome, cv2.WINDOW_NORMAL)
+            cv2.resizeWindow(self.janela_nome, 1400, 900)
+
         img = self.mapa_original.copy()
 
         # 1. Desenhar FOV (retângulo amarelo)
@@ -310,11 +324,30 @@ class FarmComCamera:
         if x_mundo is None:
             return False
 
-        eh_valido = self.camera.validar_posicao(x_mundo, y_mundo)
+        # PRIMEIRA verificação sem debug
+        eh_valido = self.camera.validar_posicao(x_mundo, y_mundo, debug=False)
 
-        # Se detectou PAREDE, tirar screenshot de debug
-        if not eh_valido and self.ultimo_frame_capturado is not None:
-            self.salvar_screenshot_parede(x_tela, y_tela, x_mundo, y_mundo)
+        # Se detectou PAREDE, REFAZER com debug ativado + screenshot
+        if not eh_valido:
+            # Calcular distância do player para entender contexto
+            dx_mundo = x_mundo - self.camera.pos_x
+            dy_mundo = y_mundo - self.camera.pos_y
+            dist_mundo = np.sqrt(dx_mundo**2 + dy_mundo**2)
+            dist_tiles = dist_mundo / 4.0  # 1 tile = 4px no mundo
+
+            print(f"\n   ⚠️ PAREDE DETECTADA!")
+            print(f"      Tela: ({x_tela}, {y_tela})")
+            print(f"      Mundo: ({x_mundo:.1f}, {y_mundo:.1f})")
+            print(f"      Player: ({self.camera.pos_x:.1f}, {self.camera.pos_y:.1f})")
+            print(f"      Distância: {dist_mundo:.1f}px = {dist_tiles:.1f} tiles")
+            print(f"      Delta: dx={dx_mundo:.1f}, dy={dy_mundo:.1f}")
+
+            # Refazer validação COM debug para mostrar detalhes
+            self.camera.validar_posicao(x_mundo, y_mundo, debug=True)
+
+            # Tirar screenshot
+            if self.ultimo_frame_capturado is not None:
+                self.salvar_screenshot_parede(x_tela, y_tela, x_mundo, y_mundo)
 
         return eh_valido
 
@@ -593,19 +626,26 @@ class FarmComCamera:
         if frame is not None and self.mostrar_deteccoes:
             img_deteccoes = self.desenhar_deteccoes(frame)
 
-            # Redimensionar para caber na tela
-            h, w = img_deteccoes.shape[:2]
-            scale = 0.8  # 80% do tamanho
-            new_w = int(w * scale)
-            new_h = int(h * scale)
-            img_resized = cv2.resize(img_deteccoes, (new_w, new_h))
+            # Garantir janela REDIMENSIONÁVEL (WINDOW_NORMAL)
+            janela_nome = "🎮 Farm Bot - Deteccoes YOLO"
+            try:
+                # Verificar se janela existe e é WINDOW_NORMAL
+                propriedade = cv2.getWindowProperty(janela_nome, cv2.WND_PROP_AUTOSIZE)
+                if propriedade != 0:  # Não é WINDOW_NORMAL, recriar
+                    cv2.destroyWindow(janela_nome)
+                    cv2.namedWindow(janela_nome, cv2.WINDOW_NORMAL)
+                    cv2.resizeWindow(janela_nome, 1280, 720)
+            except:
+                # Janela não existe, criar como WINDOW_NORMAL
+                cv2.namedWindow(janela_nome, cv2.WINDOW_NORMAL)
+                cv2.resizeWindow(janela_nome, 1280, 720)
 
-            cv2.imshow("🎮 Farm Bot - Deteccoes YOLO", img_resized)
+            cv2.imshow(janela_nome, img_deteccoes)
             key = cv2.waitKey(1) & 0xFF
             if key == ord('d') or key == ord('D'):
                 self.mostrar_deteccoes = not self.mostrar_deteccoes
                 if not self.mostrar_deteccoes:
-                    cv2.destroyWindow("🎮 Farm Bot - Deteccoes YOLO")
+                    cv2.destroyWindow(janela_nome)
 
     def processar_farm(self):
         """
