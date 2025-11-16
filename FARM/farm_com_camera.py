@@ -253,13 +253,16 @@ class FarmComCamera:
         self.deteccoes_atuais = []
         self.last_action = "IDLE"
         self.last_action_time = 0
-        self.action_cooldown = 0.4  # 400ms entre ações
+        self.action_cooldown = 1.0  # 1000ms entre ações (aumentado para debug)
 
         # Rastreamento de cliques (para visualização)
         self.ultimo_clique_x = None
         self.ultimo_clique_y = None
+        self.ultimo_clique_original_x = None
+        self.ultimo_clique_original_y = None
         self.ultimo_clique_tempo = 0
-        self.tempo_exibir_clique = 1.0  # Mostrar clique por 1 segundo
+        self.tempo_exibir_clique = 2.5  # Mostrar clique por 2.5 segundos
+        self.clique_foi_ajustado = False
 
         # Janela de visualização do jogo (frame)
         self.mostrar_deteccoes = True
@@ -347,18 +350,31 @@ class FarmComCamera:
 
         # Executar
         try:
+            # LOG DETALHADO ANTES DE CLICAR
+            print(f"\n   🖱️ CLICANDO:")
+            print(f"      Original: ({x_original}, {y_original})")
+            print(f"      Final: ({x_tela}, {y_tela})")
+            print(f"      Descrição: {description}")
+
             self.device.shell(f"input tap {x_tela} {y_tela}")
 
-            # Registrar clique para visualização
+            # Registrar AMBOS os cliques para visualização
             self.ultimo_clique_x = x_tela
             self.ultimo_clique_y = y_tela
+            self.ultimo_clique_original_x = x_original
+            self.ultimo_clique_original_y = y_original
             self.ultimo_clique_tempo = time.time()
+            self.clique_foi_ajustado = (x_tela != x_original or y_tela != y_original)
 
             if description:
                 ajuste_info = ""
-                if ajustar_zona_morta and (x_tela != x_original or y_tela != y_original):
-                    ajuste_info = f" [Ajustado: {x_original},{y_original} → {x_tela},{y_tela}]"
-                print(f"   ✅ {description} ({x_tela}, {y_tela}){ajuste_info}")
+                if self.clique_foi_ajustado:
+                    delta_x = x_tela - x_original
+                    delta_y = y_tela - y_original
+                    ajuste_info = f" [⚠️ AJUSTADO: Δx={delta_x:+d}, Δy={delta_y:+d}]"
+                print(f"   ✅ {description}{ajuste_info}")
+
+            print(f"      ⏱️ Aguardando {self.action_cooldown}s...\n")
             return True
         except Exception as e:
             print(f"   ❌ Erro: {e}")
@@ -521,51 +537,100 @@ class FarmComCamera:
         if self.ultimo_clique_x is not None:
             tempo_desde_clique = tempo_atual - self.ultimo_clique_tempo
             if tempo_desde_clique < self.tempo_exibir_clique:
-                # Calcular opacidade baseada no tempo (fade out)
-                alpha = 1.0 - (tempo_desde_clique / self.tempo_exibir_clique)
+                # Progresso do fade (0 = novo, 1 = expirado)
+                progresso = tempo_desde_clique / self.tempo_exibir_clique
 
-                # Cor vibrante: Magenta brilhante
+                # SE HOUVE AJUSTE: Desenhar AMBOS os cliques
+                if self.clique_foi_ajustado and self.ultimo_clique_original_x is not None:
+                    # 1. CLIQUE ORIGINAL (VERMELHO - onde detectou o mob)
+                    cor_original = (0, 0, 255)  # Vermelho
+                    raio_original = 25
+
+                    cv2.circle(img, (self.ultimo_clique_original_x, self.ultimo_clique_original_y),
+                              raio_original, cor_original, 2)
+                    cv2.circle(img, (self.ultimo_clique_original_x, self.ultimo_clique_original_y),
+                              5, cor_original, -1)
+
+                    # Linha conectando original → final
+                    cv2.arrowedLine(img,
+                                   (self.ultimo_clique_original_x, self.ultimo_clique_original_y),
+                                   (self.ultimo_clique_x, self.ultimo_clique_y),
+                                   (255, 255, 0), 2, tipLength=0.3)  # Amarelo
+
+                    cv2.putText(img, "ORIGINAL (MOB)",
+                               (self.ultimo_clique_original_x - 60, self.ultimo_clique_original_y - raio_original - 5),
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.5, cor_original, 2)
+
+                # 2. CLIQUE FINAL (MAGENTA - onde realmente clicou)
                 cor_clique = (255, 0, 255)  # Magenta
 
                 # Desenhar círculos concêntricos pulsantes
                 raio_base = 40
-                raio_pulso = int(raio_base * (1 + 0.3 * (tempo_desde_clique / self.tempo_exibir_clique)))
+                raio_pulso = int(raio_base * (1 + 0.5 * progresso))
 
-                # Círculo externo (mais transparente)
-                cv2.circle(img, (self.ultimo_clique_x, self.ultimo_clique_y), raio_pulso, cor_clique, 3)
+                # Círculo externo (pulsante)
+                cv2.circle(img, (self.ultimo_clique_x, self.ultimo_clique_y), raio_pulso, cor_clique, 4)
 
                 # Círculo médio
-                cv2.circle(img, (self.ultimo_clique_x, self.ultimo_clique_y), int(raio_pulso * 0.6), cor_clique, 2)
+                cv2.circle(img, (self.ultimo_clique_x, self.ultimo_clique_y), int(raio_pulso * 0.6), cor_clique, 3)
 
                 # Círculo interno (sólido)
-                cv2.circle(img, (self.ultimo_clique_x, self.ultimo_clique_y), 8, cor_clique, -1)
+                cv2.circle(img, (self.ultimo_clique_x, self.ultimo_clique_y), 10, cor_clique, -1)
 
-                # Cruz de mira
-                tam_cruz = 25
+                # Cruz de mira GIGANTE
+                tam_cruz = 30
                 cv2.line(img,
                         (self.ultimo_clique_x - tam_cruz, self.ultimo_clique_y),
                         (self.ultimo_clique_x + tam_cruz, self.ultimo_clique_y),
-                        cor_clique, 3)
+                        cor_clique, 4)
                 cv2.line(img,
                         (self.ultimo_clique_x, self.ultimo_clique_y - tam_cruz),
                         (self.ultimo_clique_x, self.ultimo_clique_y + tam_cruz),
-                        cor_clique, 3)
+                        cor_clique, 4)
 
-                # Texto "CLIQUE!"
-                cv2.putText(img, ">>> CLIQUE <<<",
-                           (self.ultimo_clique_x - 80, self.ultimo_clique_y - raio_pulso - 10),
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.8, cor_clique, 2)
+                # Texto "CLIQUE EXECUTADO!"
+                texto = ">>> CLIQUE AQUI <<<" if not self.clique_foi_ajustado else ">>> CLIQUE AJUSTADO <<<"
+                cv2.putText(img, texto,
+                           (self.ultimo_clique_x - 100, self.ultimo_clique_y - raio_pulso - 15),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.7, cor_clique, 3)
+
+                # Coordenadas exatas
+                cv2.putText(img, f"({self.ultimo_clique_x}, {self.ultimo_clique_y})",
+                           (self.ultimo_clique_x - 50, self.ultimo_clique_y + raio_pulso + 20),
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, cor_clique, 2)
 
         # Desenhar zona morta (área mínima de clique)
-        cv2.circle(img, (self.center_x, self.center_y), 30, (128, 128, 128), 1)  # Cinza
-        cv2.putText(img, "DEAD ZONE", (self.center_x - 45, self.center_y + 45),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.4, (128, 128, 128), 1)
+        cv2.circle(img, (self.center_x, self.center_y), 30, (128, 128, 128), 2)  # Cinza
+        cv2.putText(img, "DEAD ZONE 30px", (self.center_x - 60, self.center_y + 45),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (128, 128, 128), 2)
 
-        # HUD
-        cv2.putText(img, f"FPS: {self.fps_atual:.1f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-        cv2.putText(img, f"Captura: {self.metodo_captura}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
-        cv2.putText(img, f"Deteccoes: {len(self.deteccoes_atuais)}", (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-        cv2.putText(img, f"Ultima acao: {self.last_action}", (10, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        # HUD (canto superior esquerdo)
+        y_offset = 30
+        line_height = 30
+        cv2.putText(img, f"FPS: {self.fps_atual:.1f}", (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        y_offset += line_height
+
+        cv2.putText(img, f"Captura: {self.metodo_captura}", (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+        y_offset += line_height
+
+        cv2.putText(img, f"Deteccoes: {len(self.deteccoes_atuais)}", (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        y_offset += line_height
+
+        cv2.putText(img, f"Ultima acao: {self.last_action}", (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        y_offset += line_height
+
+        # Info do último clique
+        if self.ultimo_clique_x is not None:
+            tempo_desde = time.time() - self.ultimo_clique_tempo
+            if tempo_desde < self.tempo_exibir_clique:
+                cor_info = (255, 0, 255) if self.clique_foi_ajustado else (0, 255, 0)
+                cv2.putText(img, f"Ultimo clique: ({self.ultimo_clique_x}, {self.ultimo_clique_y})",
+                           (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.6, cor_info, 2)
+                y_offset += line_height
+
+                if self.clique_foi_ajustado:
+                    cv2.putText(img, f"(Original: {self.ultimo_clique_original_x}, {self.ultimo_clique_original_y})",
+                               (10, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 2)
 
         return img
 
@@ -703,8 +768,8 @@ class FarmComCamera:
                 # Atualizar visualizadores (mapa + tela do jogo)
                 self.atualizar_visualizador(frame)
 
-                # Aguardar (reduzido para aproveitar FPS maior)
-                time.sleep(0.05)  # 50ms = ~20 FPS teórico máximo
+                # Aguardar (AUMENTADO para permitir visualização - DEBUG MODE)
+                time.sleep(0.2)  # 200ms = 5 FPS para debug visual
 
                 # Verificar se visualizador fechou
                 if self.visualizador and not self.visualizador.rodando:
@@ -783,8 +848,8 @@ class FarmComCamera:
                     # Atualizar visualizadores
                     self.atualizar_visualizador(frame)
 
-                    # Aguardar
-                    time.sleep(0.001)  # Mínimo, deixar stream controlar velocidade
+                    # Aguardar (AUMENTADO para permitir visualização - DEBUG MODE)
+                    time.sleep(0.2)  # 200ms = 5 FPS para debug visual
 
                     # Verificar se visualizador fechou
                     if self.visualizador and not self.visualizador.rodando:
