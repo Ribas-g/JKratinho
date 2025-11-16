@@ -250,6 +250,11 @@ class FarmComCamera:
         # Janela de visualização do jogo (frame)
         self.mostrar_deteccoes = True
 
+        # Medidor de FPS
+        self.fps_counter = 0
+        self.fps_start_time = time.time()
+        self.fps_atual = 0
+
     def inicializar(self):
         """Inicializa GPS"""
         print("🚀 Inicializando sistema...")
@@ -306,7 +311,56 @@ class FarmComCamera:
             return False
 
     def capturar_frame(self):
-        """Captura screenshot"""
+        """
+        Captura screenshot OTIMIZADA
+
+        Método 1 (Padrão): screencap -p (PNG comprimido) - LENTO
+        Método 2 (Otimizado): screencap raw -> decodifica direto - RÁPIDO
+
+        Usa formato raw para 3-5x mais velocidade
+        """
+        try:
+            # MÉTODO OTIMIZADO: screencap sem compressão PNG
+            # Muito mais rápido que screencap -p
+            screenshot_bytes = self.device.shell("screencap", encoding=None)
+
+            if not screenshot_bytes or len(screenshot_bytes) < 1000:
+                return None
+
+            # Decodificar formato raw do screencap
+            # Formato: header (12 bytes) + pixels RGBA
+            # Header: width (4 bytes), height (4 bytes), format (4 bytes)
+
+            # Pular header (12 bytes)
+            width = int.from_bytes(screenshot_bytes[0:4], byteorder='little')
+            height = int.from_bytes(screenshot_bytes[4:8], byteorder='little')
+
+            # Dados dos pixels começam no byte 12
+            pixels = screenshot_bytes[12:]
+
+            # Converter para numpy array (RGBA)
+            img = np.frombuffer(pixels, dtype=np.uint8)
+
+            # Verificar tamanho esperado
+            expected_size = width * height * 4  # RGBA = 4 bytes por pixel
+            if len(img) < expected_size:
+                # Fallback para método antigo
+                return self.capturar_frame_fallback()
+
+            # Reshape para imagem (height, width, 4)
+            img = img.reshape((height, width, 4))
+
+            # Converter RGBA -> BGR (OpenCV usa BGR)
+            img_bgr = cv2.cvtColor(img, cv2.COLOR_RGBA2BGR)
+
+            return img_bgr
+
+        except Exception as e:
+            # Se método otimizado falhar, usar fallback
+            return self.capturar_frame_fallback()
+
+    def capturar_frame_fallback(self):
+        """Captura screenshot MÉTODO ANTIGO (fallback)"""
         try:
             screenshot_bytes = self.device.shell("screencap -p", encoding=None)
             nparr = np.frombuffer(screenshot_bytes, np.uint8)
@@ -411,8 +465,9 @@ class FarmComCamera:
             cv2.putText(img, f"{dist_tiles:.1f}t", (cx, cy), cv2.FONT_HERSHEY_SIMPLEX, 0.5, cor, 2)
 
         # HUD
-        cv2.putText(img, f"Deteccoes: {len(self.deteccoes_atuais)}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-        cv2.putText(img, f"Ultima acao: {self.last_action}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        cv2.putText(img, f"FPS: {self.fps_atual:.1f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        cv2.putText(img, f"Deteccoes: {len(self.deteccoes_atuais)}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        cv2.putText(img, f"Ultima acao: {self.last_action}", (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
         return img
 
@@ -533,6 +588,14 @@ class FarmComCamera:
                     time.sleep(0.1)
                     continue
 
+                # Calcular FPS
+                self.fps_counter += 1
+                tempo_decorrido = time.time() - self.fps_start_time
+                if tempo_decorrido >= 1.0:  # Atualizar FPS a cada 1 segundo
+                    self.fps_atual = self.fps_counter / tempo_decorrido
+                    self.fps_counter = 0
+                    self.fps_start_time = time.time()
+
                 # Detectar objetos
                 self.deteccoes_atuais = self.detectar_objetos(frame)
 
@@ -542,8 +605,8 @@ class FarmComCamera:
                 # Atualizar visualizadores (mapa + tela do jogo)
                 self.atualizar_visualizador(frame)
 
-                # Aguardar
-                time.sleep(0.15)
+                # Aguardar (reduzido para aproveitar FPS maior)
+                time.sleep(0.05)  # 50ms = ~20 FPS teórico máximo
 
                 # Verificar se visualizador fechou
                 if self.visualizador and not self.visualizador.rodando:
