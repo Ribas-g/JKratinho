@@ -239,12 +239,45 @@ class FarmIntegrado:
 
         return dist <= radius, dist, radius
 
-    def procurar_mobs_ativamente(self):
+    def procurar_mobs_ativamente(self, atualizar_gps=False):
         """
         Movimento ativo: Se não houver mobs visíveis, move-se pela área
         para encontrar mais mobs (SEM SAIR DO BIOMA)
+
+        GPS INTELIGENTE:
+        - Atualiza GPS antes de procurar mobs (evita desorientação)
+        - Usa GPS a cada 5-10 movimentos para manter precisão
+        - GPS rápido: ~0.3-0.5s (abre/fecha mapa rapidamente)
         """
         print("   🔍 Procurando mobs na área...")
+
+        # GPS INTELIGENTE: Atualizar posição se solicitado
+        if atualizar_gps:
+            print("   📡 Atualizando GPS antes de procurar...")
+            try:
+                pos = self.gps.get_current_position(keep_map_open=False, verbose=False)
+                if pos and 'x' in pos and 'y' in pos:
+                    print(f"   ✅ Posição atual: ({pos['x']:.0f}, {pos['y']:.0f})")
+
+                    # Verificar se ainda está na área de farm
+                    zone_data = self.zones[self.selected_zone]
+                    center_x = zone_data['farm_area']['center']['x']
+                    center_y = zone_data['farm_area']['center']['y']
+                    radius = zone_data['farm_area']['radius']
+
+                    dist = math.sqrt((pos['x'] - center_x)**2 + (pos['y'] - center_y)**2)
+
+                    if dist > radius:
+                        print(f"   ⚠️ FORA DA ÁREA DE FARM! Distância: {dist:.0f}/{radius} pixels")
+                        print("   🔙 Voltando para zona de farm...")
+                        # Voltar para zona
+                        self.navegar_para_zona()
+                        return
+                    else:
+                        print(f"   ✅ Dentro da área (distância: {dist:.0f}/{radius}px)")
+
+            except Exception as e:
+                print(f"   ⚠️ Erro ao atualizar GPS: {e}")
 
         # Capturar frame para detecção
         img = self.farm_bot.capturar_frame()
@@ -261,13 +294,13 @@ class FarmIntegrado:
             print("   ➡️ Nenhum mob visível, explorando área...")
 
             # Movimento em coordenadas de TELA (não usar GPS)
-            # Calcular ponto aleatório a 3-4 tiles de distância
+            # Calcular ponto aleatório a 2-3 tiles de distância (MENOS AGRESSIVO)
 
             import random
 
-            # Distância aleatória: 3-4 tiles
+            # Distância aleatória: 2-3 tiles (era 3-4, agora menor)
             tile_size = self.farm_bot.config.tile_size
-            distance = random.uniform(tile_size * 3, tile_size * 4)
+            distance = random.uniform(tile_size * 2, tile_size * 3)
 
             # Ângulo aleatório
             angle = random.uniform(0, 2 * math.pi)
@@ -291,7 +324,7 @@ class FarmIntegrado:
             # Executar movimento
             self.farm_bot.executar_tap(move_x, move_y, "🔍 Explorar área")
 
-            time.sleep(1.5)  # Esperar movimento
+            time.sleep(1.2)  # Esperar movimento (era 1.5s, agora 1.2s)
 
     def executar_farm_loop(self):
         """Loop principal de farm"""
@@ -323,9 +356,13 @@ class FarmIntegrado:
         last_mob_check = time.time()
         last_heartbeat = time.time()
         last_gps_check = time.time()  # Controle de recalibração GPS
+        last_mob_found_time = time.time()  # Última vez que encontrou mob
+        movimentos_sem_gps = 0  # Contador de movimentos sem atualizar GPS
         check_interval = 5.0  # Verificar área a cada 5 segundos
         heartbeat_interval = 30.0  # Log de status a cada 30 segundos
-        gps_check_interval = 60.0  # Verificar GPS a cada 60 segundos
+        gps_check_interval = 60.0  # Verificar GPS a cada 60 segundos (background)
+        gps_sem_mob_timeout = 15.0  # GPS se não achar mob por 15 segundos
+        max_movimentos_sem_gps = 8  # GPS a cada 8 movimentos de procura
         failed_captures = 0
         max_failed_captures = 10  # Parar após 10 falhas consecutivas
 
@@ -365,10 +402,36 @@ class FarmIntegrado:
                     time.sleep(0.5)  # Esperar antes de tentar novamente
                     continue
 
+                # GPS INTELIGENTE: Atualizar quando não encontrar mobs por muito tempo
+                tempo_sem_mob = current_time - last_mob_found_time
+                precisa_gps_inteligente = False
+
+                # Verificar se tem mob atualmente
+                if self.farm_bot.current_target is not None:
+                    last_mob_found_time = current_time  # Reset timer
+                    movimentos_sem_gps = 0  # Reset contador
+
+                # Condições para GPS inteligente:
+                # 1. Não encontrou mob por mais de 15 segundos
+                # 2. Já fez 8 movimentos de procura sem GPS
+                if tempo_sem_mob >= gps_sem_mob_timeout:
+                    print(f"\n⚠️ Sem mobs por {tempo_sem_mob:.0f}s - GPS inteligente!")
+                    precisa_gps_inteligente = True
+                elif movimentos_sem_gps >= max_movimentos_sem_gps:
+                    print(f"\n⚠️ {movimentos_sem_gps} movimentos sem GPS - atualizando!")
+                    precisa_gps_inteligente = True
+
                 # Procurar mobs ativamente se não houver alvo
                 if (current_time - last_mob_check) >= check_interval:
                     if self.farm_bot.current_target is None:
-                        self.procurar_mobs_ativamente()
+                        self.procurar_mobs_ativamente(atualizar_gps=precisa_gps_inteligente)
+                        movimentos_sem_gps += 1
+
+                        # Reset após GPS inteligente
+                        if precisa_gps_inteligente:
+                            movimentos_sem_gps = 0
+                            last_mob_found_time = current_time
+
                     last_mob_check = current_time
 
                 frame_count += 1
