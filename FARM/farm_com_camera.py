@@ -289,21 +289,48 @@ class FarmComCamera:
         if self.usar_adbnativeblitz:
             try:
                 print("   🎥 Iniciando adbnativeblitz stream...")
+                print(f"   📱 Device serial: {self.device.serial}")
+
+                # Tentar diferentes caminhos do ADB
+                import shutil
+                adb_path = shutil.which("adb")
+                if adb_path is None:
+                    # Tentar caminho padrão Windows
+                    import os
+                    possible_paths = [
+                        r"C:\Android\android-sdk\platform-tools\adb.exe",
+                        r"C:\Program Files (x86)\Android\android-sdk\platform-tools\adb.exe",
+                        r"C:\Users\{}\AppData\Local\Android\Sdk\platform-tools\adb.exe".format(os.getenv('USERNAME', 'user')),
+                        "adb"  # Fallback
+                    ]
+                    for path in possible_paths:
+                        if os.path.exists(path):
+                            adb_path = path
+                            break
+                    if adb_path is None:
+                        adb_path = "adb"
+
+                print(f"   🔧 ADB path: {adb_path}")
+
                 self.adb_stream = AdbFastScreenshots(
-                    adb_path="adb",  # ADB no PATH
+                    adb_path=adb_path,
                     device_serial=self.device.serial,
                     time_interval=179,  # Max 180s por sessão
                     width=1600,
                     height=900,
                     bitrate="20M",  # 20 Mbps
-                    screenshotbuffer=10  # Buffer de 10 frames
+                    screenshotbuffer=10,  # Buffer de 10 frames
+                    go_idle=0.001  # Baixa latência
                 )
                 # Iniciar stream (entra no context manager)
                 self.adb_stream.__enter__()
                 print("   ✅ Stream iniciado!")
             except Exception as e:
                 print(f"   ⚠️ Falha ao iniciar adbnativeblitz: {e}")
+                print(f"   📝 Tipo de erro: {type(e).__name__}")
                 print("   ↪️ Voltando para screencap raw...")
+                print("   💡 Dica: adbnativeblitz pode ter problemas no Windows")
+                print("      Use screencap raw (10-15 FPS) por enquanto")
                 self.usar_adbnativeblitz = False
                 self.metodo_captura = "SCREENCAP_RAW"
                 self.adb_stream = None
