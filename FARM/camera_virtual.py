@@ -192,15 +192,32 @@ class CameraVirtual:
         # Se QUALQUER pixel na área for andável, considerar OK
         if debug:
             print(f"      Verificando área 3x3:")
+            print(f"      Shape da matriz: {self.matriz_walkable.shape}")
+            print(f"      Formato de acesso: matriz[?, ?]")
 
         andavel_encontrado = False
         for dy in [-1, 0, 1]:
             for dx in [-1, 0, 1]:
-                valor = self.matriz_walkable[y + dy, x + dx]
+                # TENTAR AMBAS AS ORDENS para descobrir qual é a correta
+                try:
+                    # Opção 1: matriz[y, x] (linha, coluna) - PADRÃO NUMPY
+                    valor_yx = self.matriz_walkable[y + dy, x + dx]
+                except:
+                    valor_yx = -1
+
+                try:
+                    # Opção 2: matriz[x, y] (se foi criada assim)
+                    valor_xy = self.matriz_walkable[x + dx, y + dy]
+                except:
+                    valor_xy = -1
+
                 if debug:
-                    simbolo = "✓" if valor == 1 else "✗"
-                    print(f"         [{y+dy}, {x+dx}] = {valor} {simbolo}")
-                if valor == 1:
+                    simbolo_yx = "✓" if valor_yx == 1 else "✗"
+                    simbolo_xy = "✓" if valor_xy == 1 else "✗"
+                    print(f"         matriz[{y+dy:4d}, {x+dx:4d}] = {valor_yx} {simbolo_yx}  |  matriz[{x+dx:4d}, {y+dy:4d}] = {valor_xy} {simbolo_xy}")
+
+                # Usar opção 1 (matriz[y, x]) por enquanto
+                if valor_yx == 1:
                     andavel_encontrado = True
 
         if debug:
@@ -208,6 +225,8 @@ class CameraVirtual:
                 print(f"      ✅ ANDÁVEL (pelo menos 1 pixel livre)")
             else:
                 print(f"      🚫 PAREDE (toda área bloqueada)")
+            print(f"      💡 DICA: Compare as duas colunas acima. Se uma tem ✓ e outra não,")
+            print(f"               a matriz está com coordenadas invertidas!")
 
         return andavel_encontrado
 
