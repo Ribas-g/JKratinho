@@ -240,9 +240,15 @@ class FarmComCamera:
         self.center_x = 800
         self.center_y = 450
 
-        # Estado
+        # Estado do farm
         self.running = False
         self.deteccoes_atuais = []
+        self.last_action = "IDLE"
+        self.last_action_time = 0
+        self.action_cooldown = 0.4  # 400ms entre ações
+
+        # Janela de visualização do jogo (frame)
+        self.mostrar_deteccoes = True
 
     def inicializar(self):
         """Inicializa GPS"""
@@ -336,28 +342,97 @@ class FarmComCamera:
         except:
             return []
 
-    def atualizar_visualizador(self):
-        """Atualiza visualizador com detecções"""
-        if not self.visualizador or not self.visualizador.rodando:
-            return
+    def desenhar_deteccoes(self, frame):
+        """
+        Desenha detecções YOLO no frame do jogo
 
-        # Converter detecções para coordenadas mundo
-        inimigos_mundo = []
+        Args:
+            frame: Imagem BGR do jogo
+
+        Returns:
+            frame com detecções desenhadas
+        """
+        if frame is None or len(self.deteccoes_atuais) == 0:
+            return frame
+
+        img = frame.copy()
+
+        # Cores por classe
+        cores = {
+            'coin': (0, 255, 255),  # Amarelo
+            'crab': (0, 255, 0),    # Verde
+            'rat': (0, 0, 255),     # Vermelho
+            'crow': (211, 0, 148),  # Roxo
+            'spider': (0, 165, 255), # Laranja
+        }
 
         for det in self.deteccoes_atuais:
-            x_tela, y_tela = det['center']
-            x_mundo, y_mundo = self.tela_para_mundo(x_tela, y_tela)
+            x1, y1, x2, y2 = det['bbox']
+            cx, cy = det['center']
+            classe = det['class']
+            conf = det['conf']
 
-            if x_mundo is not None:
-                inimigos_mundo.append({
-                    'x_mundo': x_mundo,
-                    'y_mundo': y_mundo,
-                    'class': det['class']
-                })
+            # Cor
+            cor = cores.get(classe, (255, 255, 255))
 
-        # Atualizar
-        self.visualizador.atualizar_inimigos(inimigos_mundo)
-        self.visualizador.atualizar()
+            # Retângulo
+            cv2.rectangle(img, (x1, y1), (x2, y2), cor, 2)
+
+            # Label
+            label = f"{classe} {conf:.2f}"
+            (w, h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+            cv2.rectangle(img, (x1, y1 - h - 4), (x1 + w, y1), cor, -1)
+            cv2.putText(img, label, (x1, y1 - 2), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 0), 1)
+
+            # Distância
+            dist_tiles = self.calcular_distancia_tiles(det['bbox'])
+            cv2.putText(img, f"{dist_tiles:.1f}t", (cx, cy), cv2.FONT_HERSHEY_SIMPLEX, 0.5, cor, 2)
+
+        # HUD
+        cv2.putText(img, f"Deteccoes: {len(self.deteccoes_atuais)}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        cv2.putText(img, f"Ultima acao: {self.last_action}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+
+        return img
+
+    def atualizar_visualizador(self, frame=None):
+        """Atualiza visualizador com detecções"""
+        # 1. Atualizar mapa virtual
+        if self.visualizador and self.visualizador.rodando:
+            # Converter detecções para coordenadas mundo
+            inimigos_mundo = []
+
+            for det in self.deteccoes_atuais:
+                x_tela, y_tela = det['center']
+                x_mundo, y_mundo = self.tela_para_mundo(x_tela, y_tela)
+
+                if x_mundo is not None:
+                    inimigos_mundo.append({
+                        'x_mundo': x_mundo,
+                        'y_mundo': y_mundo,
+                        'class': det['class']
+                    })
+
+            # Atualizar
+            self.visualizador.atualizar_inimigos(inimigos_mundo)
+            self.visualizador.atualizar()
+
+        # 2. Mostrar tela do jogo com detecções
+        if frame is not None and self.mostrar_deteccoes:
+            img_deteccoes = self.desenhar_deteccoes(frame)
+
+            # Redimensionar para caber na tela
+            h, w = img_deteccoes.shape[:2]
+            scale = 0.8  # 80% do tamanho
+            new_w = int(w * scale)
+            new_h = int(h * scale)
+            img_resized = cv2.resize(img_deteccoes, (new_w, new_h))
+
+            cv2.imshow("🎮 Farm Bot - Deteccoes YOLO", img_resized)
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord('d') or key == ord('D'):
+                self.mostrar_deteccoes = not self.mostrar_deteccoes
+                if not self.mostrar_deteccoes:
+                    cv2.destroyWindow("🎮 Farm Bot - Deteccoes YOLO")
 
     def processar_farm(self):
         """
@@ -442,8 +517,8 @@ class FarmComCamera:
                 # 🎯 LÓGICA DE FARM
                 self.processar_farm()
 
-                # Atualizar visualizador
-                self.atualizar_visualizador()
+                # Atualizar visualizadores (mapa + tela do jogo)
+                self.atualizar_visualizador(frame)
 
                 # Aguardar
                 time.sleep(0.15)
