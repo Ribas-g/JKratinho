@@ -302,48 +302,18 @@ class FarmIntegrado:
         mobs = [d for d in deteccoes if d['class'] in self.zones[self.selected_zone]['mobs']]
 
         if len(mobs) == 0:
-            # Nenhum mob visível - mover para explorar área
-            print("   ➡️ Nenhum mob visível, explorando área...")
+            # Nenhum mob visível
+            print("   ➡️ Nenhum mob visível")
 
-            # SE NA BORDA: Navegar para centro usando A*
-            if na_borda and pos_atual:
-                print("   🎯 NA BORDA - Navegando para CENTRO com A*...")
+            # GPS INTELIGENTE ATIVADO: Navegar para centro usando A*
+            if atualizar_gps and pos_atual:
+                print("   🎯 GPS INTELIGENTE - Navegando para CENTRO com A*...")
                 self.navegar_para_centro_inteligente(pos_atual)
                 return
 
-            # SENÃO: Movimento aleatório normal
-            # Movimento em coordenadas de TELA (não usar GPS)
-            # Calcular ponto aleatório a 2-3 tiles de distância (MENOS AGRESSIVO)
-
-            import random
-
-            # Distância aleatória: 2-3 tiles (era 3-4, agora menor)
-            tile_size = self.farm_bot.config.tile_size
-            distance = random.uniform(tile_size * 2, tile_size * 3)
-
-            # Ângulo aleatório
-            angle = random.uniform(0, 2 * math.pi)
-
-            # Calcular ponto relativo ao personagem (centro da tela)
-            center_x = self.farm_bot.config.center_x
-            center_y = self.farm_bot.config.center_y
-
-            offset_x = int(distance * math.cos(angle))
-            offset_y = int(distance * math.sin(angle))
-
-            move_x = center_x + offset_x
-            move_y = center_y + offset_y
-
-            # Limitar à tela (não clicar fora)
-            move_x = max(100, min(self.farm_bot.config.screen_width - 100, move_x))
-            move_y = max(100, min(self.farm_bot.config.screen_height - 100, move_y))
-
-            print(f"   📍 Explorando: ({move_x}, {move_y}) - {distance/tile_size:.1f} tiles")
-
-            # Executar movimento
-            self.farm_bot.executar_tap(move_x, move_y, "🔍 Explorar área")
-
-            time.sleep(1.2)  # Esperar movimento (era 1.5s, agora 1.2s)
+            # Se GPS inteligente não foi ativado ainda, só esperar
+            print("   ⏳ Aguardando próxima verificação...")
+            time.sleep(1.0)
 
     def navegar_para_centro_inteligente(self, pos_atual):
         """
@@ -405,12 +375,8 @@ class FarmIntegrado:
             # Abrir mapa, clicar no waypoint, fechar mapa
             print("   🗺️ Abrindo mapa para clicar waypoint...")
 
-            # Abrir mapa
-            self.farm_bot.executar_tap(
-                self.farm_bot.config.map_button_x,
-                self.farm_bot.config.map_button_y,
-                "📍 Abrir mapa"
-            )
+            # Abrir mapa usando método do GPS
+            self.gps.click_button('open')
             time.sleep(0.4)  # Esperar mapa abrir
 
             # Converter coordenadas mundo → tela do mapa
@@ -419,16 +385,12 @@ class FarmIntegrado:
 
             print(f"   📍 Clicando waypoint no mapa: tela ({map_x}, {map_y}) = mundo ({wp_x}, {wp_y})")
 
-            # Clicar no waypoint
-            self.farm_bot.executar_tap(map_x, map_y, "🎯 Clicar waypoint")
+            # Clicar no waypoint via ADB
+            self.gps.device.shell(f"input tap {map_x} {map_y}")
             time.sleep(0.3)
 
             # Fechar mapa (personagem continua andando automaticamente)
-            self.farm_bot.executar_tap(
-                self.farm_bot.config.map_button_x,
-                self.farm_bot.config.map_button_y,
-                "🗺️ Fechar mapa"
-            )
+            self.gps.click_button('close')
 
             print("   ✅ Navegação iniciada! Personagem andando para centro...")
             print("   👀 Main loop monitorará mobs (cancela se encontrar)")
@@ -463,15 +425,11 @@ class FarmIntegrado:
         print(f"   📍 Clicando centro: tela ({map_x}, {map_y}) = mundo ({center_x}, {center_y})")
 
         # Clicar no centro (mapa já está aberto do GPS)
-        self.farm_bot.executar_tap(map_x, map_y, "🎯 Clicar centro")
+        self.gps.device.shell(f"input tap {map_x} {map_y}")
         time.sleep(0.3)
 
         # Fechar mapa
-        self.farm_bot.executar_tap(
-            self.farm_bot.config.map_button_x,
-            self.farm_bot.config.map_button_y,
-            "🗺️ Fechar mapa"
-        )
+        self.gps.click_button('close')
 
         print("   ✅ Navegação iniciada (direta)!")
         time.sleep(2.0)
@@ -508,10 +466,10 @@ class FarmIntegrado:
         last_gps_check = time.time()  # Controle de recalibração GPS
         last_mob_found_time = time.time()  # Última vez que encontrou mob
         movimentos_sem_gps = 0  # Contador de movimentos sem atualizar GPS
-        check_interval = 5.0  # Verificar área a cada 5 segundos
+        check_interval = 3.0  # Verificar área a cada 3 segundos
         heartbeat_interval = 30.0  # Log de status a cada 30 segundos
-        gps_check_interval = 60.0  # Verificar GPS a cada 60 segundos (background)
-        gps_sem_mob_timeout = 5.0  # GPS se não achar mob por 5 segundos (REDUZIDO!)
+        gps_check_interval = 30.0  # Verificar se saiu do bioma a cada 30 segundos
+        gps_sem_mob_timeout = 3.0  # GPS INTELIGENTE se não achar mob por 3 segundos!
         max_movimentos_sem_gps = 8  # GPS a cada 8 movimentos de procura
         borda_threshold = 0.7  # Considera "borda" se >70% do raio
         failed_captures = 0
@@ -525,19 +483,41 @@ class FarmIntegrado:
                     print(f"\n💚 [Heartbeat] Frame {frame_count}, Bot ativo: {self.farm_bot.bot_active}")
                     last_heartbeat = current_time
 
-                # GPS RECALIBRAÇÃO: Verificar se precisa atualizar posição virtual
-                if self.farm_bot.usar_mapa_virtual and (current_time - last_gps_check) >= gps_check_interval:
-                    if self.farm_bot.precisa_gps_recalibracao():
-                        print("\n🔄 GPS recalibração necessária...")
-                        try:
-                            pos = self.gps.get_current_position(keep_map_open=False, verbose=False)
-                            if pos and 'x' in pos and 'y' in pos:
+                # VERIFICAÇÃO PERIÓDICA: Checar se saiu do bioma
+                if (current_time - last_gps_check) >= gps_check_interval:
+                    print("\n📡 Verificação periódica de posição...")
+                    try:
+                        pos = self.gps.get_current_position(keep_map_open=False, verbose=False)
+                        if pos and 'x' in pos and 'y' in pos:
+                            # Dados da zona
+                            zone_data = self.zones[self.selected_zone]
+                            center_x = zone_data['farm_area']['center']['x']
+                            center_y = zone_data['farm_area']['center']['y']
+                            radius = zone_data['farm_area']['radius']
+
+                            dist = math.sqrt((pos['x'] - center_x)**2 + (pos['y'] - center_y)**2)
+
+                            # Atualizar mapa virtual se estiver usando
+                            if self.farm_bot.usar_mapa_virtual:
                                 self.farm_bot.atualizar_posicao_gps(pos['x'], pos['y'])
-                                print(f"   ✅ Posição atualizada: ({pos['x']}, {pos['y']})")
+
+                            # VERIFICAR SE SAIU DO BIOMA
+                            if dist > radius:
+                                print(f"   ⚠️ SAIU DO BIOMA! Distância: {dist:.0f}/{radius}px")
+                                print(f"   🎯 Navegando de volta ao CENTRO com A*...")
+
+                                # Usar mesma função de navegação A* para centro
+                                self.navegar_para_centro_inteligente(pos)
+
+                                # Reset timers após voltar
+                                last_mob_found_time = current_time
+                                movimentos_sem_gps = 0
                             else:
-                                print("   ⚠️ GPS recalibração falhou")
-                        except Exception as e:
-                            print(f"   ⚠️ Erro na recalibração GPS: {e}")
+                                print(f"   ✅ Dentro do bioma ({dist:.0f}/{radius}px)")
+                        else:
+                            print("   ⚠️ GPS check falhou")
+                    except Exception as e:
+                        print(f"   ⚠️ Erro no GPS check: {e}")
                     last_gps_check = current_time
 
                 # Processar frame de farm
