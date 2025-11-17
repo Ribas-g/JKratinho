@@ -31,6 +31,8 @@ from collections import deque
 from dataclasses import dataclass
 from typing import Optional, Tuple, List
 from mapa_virtual_tempo import MapaVirtualComTempo
+from potion_manager import PotionManager
+from skill_manager import SkillManager
 
 
 @dataclass
@@ -117,6 +119,11 @@ class ArcherFarmBot:
         self.last_kite_move = 0
         self.combat_style = "ranged"  # "ranged" (arqueiro/mago) ou "melee" (guerreiro)
 
+        # NOVOS SISTEMAS: Poções e Skills
+        self.potion_manager = None  # Inicializado depois (precisa do device)
+        self.skill_manager = None    # Inicializado depois (precisa do device)
+        self.classe_atual = "warrior"  # Classe padrão
+
         # Área de farm (limites para não sair do bioma)
         self.farm_area_center = None  # (x, y) em coordenadas de tela
         self.farm_area_radius = None  # raio em pixels
@@ -158,7 +165,7 @@ class ArcherFarmBot:
         print(f"   📍 Área de farm configurada: centro=({center_screen_x}, {center_screen_y}), raio={radius_px}px")
 
     def conectar_bluestacks(self):
-        """Conecta ao BlueStacks"""
+        """Conecta ao BlueStacks e inicializa sistemas"""
         try:
             devices = adb.device_list()
             if not devices:
@@ -167,6 +174,23 @@ class ArcherFarmBot:
 
             self.device = devices[0]
             print(f"✅ Conectado: {self.device.serial}")
+
+            # Inicializar Potion Manager
+            try:
+                self.potion_manager = PotionManager(self.device)
+                print("✅ Potion Manager iniciado!")
+            except Exception as e:
+                print(f"⚠️ Potion Manager não disponível: {e}")
+                self.potion_manager = None
+
+            # Inicializar Skill Manager
+            try:
+                self.skill_manager = SkillManager(self.device, classe=self.classe_atual)
+                print("✅ Skill Manager iniciado!")
+            except Exception as e:
+                print(f"⚠️ Skill Manager não disponível: {e}")
+                self.skill_manager = None
+
             return True
         except Exception as e:
             print(f"❌ Erro: {e}")
@@ -686,6 +710,13 @@ class ArcherFarmBot:
 
         # Bot ativo
         if self.bot_active:
+            # PRIORIDADE 0: GERENCIAR POÇÕES (SOBREVIVÊNCIA!)
+            if self.potion_manager:
+                try:
+                    self.potion_manager.gerenciar_automatico(img, verbose=False)
+                except Exception as e:
+                    pass  # Silencioso para não poluir logs
+
             # PRIORIDADE 1: Detectar cerco (PERIGOSO!)
             cercado, num_mobs, ponto_fuga = self.detectar_cerco(deteccoes)
 
@@ -700,6 +731,21 @@ class ArcherFarmBot:
             # Selecionar alvo
             alvo_info = self.selecionar_alvo(deteccoes)
             self.current_target = alvo_info
+
+            # USAR SKILLS INTELIGENTEMENTE
+            if self.skill_manager and alvo_info:
+                try:
+                    # Filtrar apenas mobs (não coins)
+                    mobs_detectados = [d for d in deteccoes if d['class'] != 'coin']
+
+                    # Decidir e usar skill automaticamente
+                    self.skill_manager.decidir_e_usar_skill(
+                        mobs_detectados,
+                        alvo_info,
+                        self.calcular_distancia
+                    )
+                except Exception as e:
+                    pass  # Silencioso
 
             # Executar ação
             self.executar_acao(alvo_info)

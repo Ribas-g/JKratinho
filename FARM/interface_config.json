@@ -1,0 +1,99 @@
+{
+  "_comentario": "Configuração de interface calibrada - BlueStacks 1600x900",
+  "_data_calibracao": "2025-01-17",
+  "resolucao": {
+    "width": 1600,
+    "height": 900
+  },
+  "status_bars": {
+    "hp_texto": {
+      "x1": 14,
+      "y1": 4,
+      "x2": 470,
+      "y2": 46,
+      "comentario": "Região do texto HP (ex: 500/600)"
+    },
+    "mana_barra": {
+      "x1": 4,
+      "y1": 50,
+      "x2": 496,
+      "y2": 63,
+      "hexcode": "3cbcfc",
+      "cor_cheia_hsv": {
+        "h_min": 85,
+        "s_min": 150,
+        "v_min": 200,
+        "h_max": 105,
+        "s_max": 255,
+        "v_max": 255,
+        "comentario": "Azul ciano da barra de mana"
+      },
+      "comentario": "Barra de mana (azul) - lê porcentagem"
+    },
+    "xp_barra": {
+      "x1": 4,
+      "y1": 67,
+      "x2": 496,
+      "y2": 71,
+      "hexcode": "f3f3f3",
+      "cor_cheia_hsv": {
+        "h_min": 0,
+        "s_min": 0,
+        "v_min": 200,
+        "h_max": 180,
+        "s_max": 40,
+        "v_max": 255,
+        "comentario": "Branco da barra de XP"
+      },
+      "comentario": "Barra de XP (branca) - lê porcentagem"
+    }
+  },
+  "potions_count": {
+    "hp_potion_count": {
+      "x1": 10,
+      "y1": 844,
+      "x2": 147,
+      "y2": 897,
+      "comentario": "Região do número de poções HP"
+    },
+    "mana_potion_count": {
+      "x1": 10,
+      "y1": 692,
+      "x2": 147,
+      "y2": 746,
+      "comentario": "Região do número de poções Mana"
+    }
+  },
+  "buttons": {
+    "skill": {
+      "x": 80,
+      "y": 530,
+      "comentario": "Botão de skill (Dash/Whirlwind/etc)"
+    },
+    "hp_potion": {
+      "x": 80,
+      "y": 835,
+      "comentario": "Botão usar poção HP"
+    },
+    "mana_potion": {
+      "x": 80,
+      "y": 675,
+      "comentario": "Botão usar poção Mana"
+    },
+    "class_warrior": {
+      "x": 1550,
+      "y": 630,
+      "comentario": "Botão trocar para Guerreiro"
+    },
+    "class_archer": {
+      "x": 1550,
+      "y": 745,
+      "comentario": "Botão trocar para Arqueiro"
+    },
+    "class_mage": {
+      "x": 1550,
+      "y": 840,
+      "comentario": "Botão trocar para Mago"
+    }
+  }
+}
