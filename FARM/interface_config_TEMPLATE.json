@@ -1,0 +1,93 @@
+{
+  "_comentario": "Preencha as coordenadas obtidas no Photoshop",
+  "_resolucao": "1600x900",
+  "status_bars": {
+    "hp_texto": {
+      "x1": 0,
+      "y1": 0,
+      "x2": 0,
+      "y2": 0,
+      "comentario": "Região do texto HP (ex: 500/600)"
+    },
+    "mana_barra": {
+      "x1": 0,
+      "y1": 0,
+      "x2": 0,
+      "y2": 0,
+      "cor_cheia_hsv": {
+        "h_min": 100,
+        "s_min": 100,
+        "v_min": 100,
+        "h_max": 130,
+        "s_max": 255,
+        "v_max": 255,
+        "comentario": "Ajustar conforme cor azul da mana"
+      },
+      "comentario": "Região da barra de mana (azul)"
+    },
+    "xp_barra": {
+      "x1": 0,
+      "y1": 0,
+      "x2": 0,
+      "y2": 0,
+      "cor_cheia_hsv": {
+        "h_min": 0,
+        "s_min": 0,
+        "v_min": 200,
+        "h_max": 180,
+        "s_max": 30,
+        "v_max": 255,
+        "comentario": "Branco - ajustar se necessário"
+      },
+      "comentario": "Região da barra de XP (branca)"
+    }
+  },
+  "potions_count": {
+    "hp_potion_count": {
+      "x1": 0,
+      "y1": 0,
+      "x2": 0,
+      "y2": 0,
+      "comentario": "Região do número de poções HP"
+    },
+    "mana_potion_count": {
+      "x1": 0,
+      "y1": 0,
+      "x2": 0,
+      "y2": 0,
+      "comentario": "Região do número de poções Mana"
+    }
+  },
+  "buttons": {
+    "skill": {
+      "x": 0,
+      "y": 0,
+      "comentario": "Centro do botão de skill (habilidade)"
+    },
+    "hp_potion": {
+      "x": 0,
+      "y": 0,
+      "comentario": "Centro do botão de poção HP"
+    },
+    "mana_potion": {
+      "x": 0,
+      "y": 0,
+      "comentario": "Centro do botão de poção Mana"
+    },
+    "class_warrior": {
+      "x": 0,
+      "y": 0,
+      "comentario": "Centro do botão trocar para Guerreiro"
+    },
+    "class_archer": {
+      "x": 0,
+      "y": 0,
+      "comentario": "Centro do botão trocar para Arqueiro"
+    },
+    "class_mage": {
+      "x": 0,
+      "y": 0,
+      "comentario": "Centro do botão trocar para Mago"
+    }
+  }
+}

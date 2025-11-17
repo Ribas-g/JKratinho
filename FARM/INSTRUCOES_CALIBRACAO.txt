@@ -1,0 +1,93 @@
+
+╔════════════════════════════════════════════════════════════════════════════╗
+║                  📐 GUIA: COMO PEGAR COORDENADAS NO PHOTOSHOP              ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+🎯 PASSO A PASSO:
+
+1. Abra o PNG no Photoshop
+2. Vá em Window → Info (para mostrar coordenadas do mouse)
+3. Use a ferramenta Rectangular Marquee Tool (M)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📊 PARA REGIÕES (x1, y1, x2, y2):
+
+1. Selecione a região desejada com Rectangular Marquee
+2. No painel Info, você verá:
+   - X: coordenada X do canto superior esquerdo (x1)
+   - Y: coordenada Y do canto superior esquerdo (y1)
+   - W: largura da seleção
+   - H: altura da seleção
+
+3. Calcule x2 e y2:
+   - x2 = X + W
+   - y2 = Y + H
+
+Exemplo:
+   Info mostra: X=50, Y=30, W=100, H=20
+   Resultado:   x1=50, y1=30, x2=150, y2=50
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎮 PARA BOTÕES (x, y):
+
+1. Use a ferramenta Eyedropper (I)
+2. Clique no CENTRO do botão
+3. No painel Info, veja X e Y
+4. Esses são os valores x e y do botão
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎨 PARA CORES (HSV):
+
+1. Use Eyedropper (I) na barra CHEIA (100%)
+2. Veja o painel Color (Window → Color)
+3. Mude para modo HSB (pequeno menu no canto do painel)
+4. Anote os valores H, S, B
+
+   IMPORTANTE:
+   - Photoshop usa H=0-360°, S=0-100%, B=0-100%
+   - OpenCV usa H=0-180, S=0-255, V=0-255
+
+   CONVERSÃO:
+   - H_opencv = H_photoshop / 2
+   - S_opencv = S_photoshop * 2.55
+   - V_opencv = B_photoshop * 2.55
+
+Exemplo - Barra Azul (Mana):
+   Photoshop: H=200°, S=80%, B=90%
+   OpenCV:    H=100, S=204, V=230
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+✅ CHECKLIST DE CALIBRAÇÃO:
+
+Status Bars:
+  [ ] 1. HP Texto (500/600)      → x1, y1, x2, y2
+  [ ] 2. Barra Mana (azul)       → x1, y1, x2, y2 + cor HSV
+  [ ] 3. Barra XP (branca)       → x1, y1, x2, y2 + cor HSV
+
+Potion Count:
+  [ ] 4. Quantidade Poção HP     → x1, y1, x2, y2
+  [ ] 5. Quantidade Poção Mana   → x1, y1, x2, y2
+
+Buttons:
+  [ ] 6. Skill                   → x, y
+  [ ] 7. Poção HP                → x, y
+  [ ] 8. Poção Mana              → x, y
+  [ ] 9. Trocar Guerreiro        → x, y
+  [ ] 10. Trocar Arqueiro        → x, y
+  [ ] 11. Trocar Mago            → x, y
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+💡 DICAS:
+
+- Zoom in (Ctrl + +) para precisão nas bordas
+- Use guides (Ctrl + R) para alinhar
+- Para barras, selecione APENAS a parte preenchida (não a borda)
+- Para botões, clique BEM no centro
+- Salve as coordenadas em interface_config.json
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
